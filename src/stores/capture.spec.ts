@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
-import { useCaptureStore, clampRegion, type WindowInfo } from "@/stores/capture";
+import {
+  useCaptureStore,
+  clampRegion,
+  formatPageFilename,
+  isValidTransition,
+  type WindowInfo,
+} from "@/stores/capture";
 
 const testWindow: WindowInfo = {
   handle: 12345,
@@ -147,5 +153,138 @@ describe("useCaptureStore", () => {
     const otherWindow = { ...testWindow, handle: 99999, title: "Other" };
     store.selectWindow(otherWindow);
     expect(store.region).toBeNull();
+  });
+});
+
+describe("formatPageFilename", () => {
+  it("pads page numbers to 3 digits", () => {
+    expect(formatPageFilename("page", 1)).toBe("page-001.png");
+    expect(formatPageFilename("page", 42)).toBe("page-042.png");
+    expect(formatPageFilename("page", 999)).toBe("page-999.png");
+  });
+
+  it("handles custom prefixes", () => {
+    expect(formatPageFilename("book", 5)).toBe("book-005.png");
+  });
+
+  it("handles page numbers beyond 999", () => {
+    expect(formatPageFilename("page", 1234)).toBe("page-1234.png");
+  });
+});
+
+describe("isValidTransition", () => {
+  it("allows idle → capturing", () => {
+    expect(isValidTransition("idle", "capturing")).toBe(true);
+  });
+
+  it("allows capturing → paused", () => {
+    expect(isValidTransition("capturing", "paused")).toBe(true);
+  });
+
+  it("allows capturing → stopped", () => {
+    expect(isValidTransition("capturing", "stopped")).toBe(true);
+  });
+
+  it("allows capturing → completed", () => {
+    expect(isValidTransition("capturing", "completed")).toBe(true);
+  });
+
+  it("allows paused → capturing (resume)", () => {
+    expect(isValidTransition("paused", "capturing")).toBe(true);
+  });
+
+  it("allows paused → stopped", () => {
+    expect(isValidTransition("paused", "stopped")).toBe(true);
+  });
+
+  it("rejects idle → paused", () => {
+    expect(isValidTransition("idle", "paused")).toBe(false);
+  });
+
+  it("rejects stopped → capturing", () => {
+    expect(isValidTransition("stopped", "capturing")).toBe(false);
+  });
+
+  it("allows stopped → idle (reset)", () => {
+    expect(isValidTransition("stopped", "idle")).toBe(true);
+  });
+
+  it("allows completed → idle (reset)", () => {
+    expect(isValidTransition("completed", "idle")).toBe(true);
+  });
+});
+
+describe("batch capture state", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("starts in idle state", () => {
+    const store = useCaptureStore();
+    expect(store.batchState).toBe("idle");
+    expect(store.pagesCaptured).toBe(0);
+    expect(store.isCapturing).toBe(false);
+  });
+
+  it("transitions through capture lifecycle", () => {
+    const store = useCaptureStore();
+    expect(store.transitionTo("capturing")).toBe(true);
+    expect(store.batchState).toBe("capturing");
+    expect(store.isCapturing).toBe(true);
+
+    expect(store.transitionTo("paused")).toBe(true);
+    expect(store.batchState).toBe("paused");
+    expect(store.isPaused).toBe(true);
+
+    expect(store.transitionTo("capturing")).toBe(true);
+    expect(store.batchState).toBe("capturing");
+
+    expect(store.transitionTo("stopped")).toBe(true);
+    expect(store.batchState).toBe("stopped");
+  });
+
+  it("rejects invalid transitions", () => {
+    const store = useCaptureStore();
+    expect(store.transitionTo("paused")).toBe(false);
+    expect(store.batchState).toBe("idle");
+  });
+
+  it("tracks captured pages", () => {
+    const store = useCaptureStore();
+    store.transitionTo("capturing");
+
+    for (let i = 1; i <= 5; i++) {
+      store.recordCapture({
+        pageNumber: i,
+        totalPages: null,
+        imagePath: `test/page-${String(i).padStart(3, "0")}.png`,
+        status: "captured",
+      });
+    }
+
+    expect(store.pagesCaptured).toBe(5);
+    expect(store.captureHistory).toHaveLength(5);
+  });
+
+  it("resets counters when transitioning to idle", () => {
+    const store = useCaptureStore();
+    store.transitionTo("capturing");
+    store.recordCapture({
+      pageNumber: 1,
+      totalPages: null,
+      imagePath: "test/page-001.png",
+      status: "captured",
+    });
+    store.transitionTo("stopped");
+    store.transitionTo("idle");
+
+    expect(store.pagesCaptured).toBe(0);
+    expect(store.captureHistory).toHaveLength(0);
+  });
+
+  it("enforces minimum delay", () => {
+    const store = useCaptureStore();
+    store.setBatchConfig({ delayBetweenMs: 50 });
+    expect(store.batchConfig.delayBetweenMs).toBe(200);
   });
 });
