@@ -27,6 +27,7 @@
     "vue-tsc": "^3.2.5"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.10.1"
+    "@tauri-apps/api": "^2.10.1",
+    "pinia": "^3.0.4"
   }
 }
