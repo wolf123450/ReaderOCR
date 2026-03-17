@@ -5,7 +5,12 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "vitest run && cd src-python && .venv/Scripts/python -m pytest -v"
   },
   "license": "MIT",
   "description": "Book image to EPUB converter",
