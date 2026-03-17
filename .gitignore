@@ -1,0 +1,48 @@
+# === OS ===
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+# === Rust / Tauri ===
+src-tauri/target/
+**/*.rs.bk
+
+# === Node.js ===
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# === Python ===
+src-python/.venv/
+src-python/__pycache__/
+src-python/**/__pycache__/
+src-python/**/*.pyc
+src-python/*.egg-info/
+src-python/dist/
+src-python/build/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# === IDE ===
+.idea/
+*.swp
+*.swo
+*~
+
+# === Environment ===
+.env
+.env.*
+!.env.example
+
+# === Logs ===
+*.log
+logs/
+
+# === Build artifacts ===
+*.exe
+*.msi
+*.nsis
