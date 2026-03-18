@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useCaptureStore, type CaptureRegion } from "@/stores/capture";
 
@@ -49,6 +49,16 @@ const displayWidth = computed(() =>
 const displayHeight = computed(() =>
   store.selectedWindow ? store.selectedWindow.height * effectiveScale.value : 0
 );
+
+// Clamp local coords to the window bounds
+function clampLocal(x: number, y: number): { x: number; y: number } {
+  const win = store.selectedWindow;
+  if (!win) return { x, y };
+  return {
+    x: Math.max(0, Math.min(x, win.width)),
+    y: Math.max(0, Math.min(y, win.height)),
+  };
+}
 
 // Drawing region in window-local coords
 const drawingRegion = computed<CaptureRegion | null>(() => {
@@ -127,18 +137,19 @@ watch(
   }
 );
 
-// Mouse → window-local coords
-function toLocalCoords(e: MouseEvent): { x: number; y: number } | null {
-  if (!overlayRef.value) return null;
+// Mouse → window-local coords (clamped to image bounds)
+function toLocalCoords(e: MouseEvent): { x: number; y: number } {
+  if (!overlayRef.value) return { x: 0, y: 0 };
   const rect = overlayRef.value.getBoundingClientRect();
   const s = effectiveScale.value;
-  return {
+  const raw = {
     x: (e.clientX - rect.left) / s,
     y: (e.clientY - rect.top) / s,
   };
+  return clampLocal(raw.x, raw.y);
 }
 
-function onMouseDown(e: MouseEvent) {
+function onOverlayMouseDown(e: MouseEvent) {
   if (!store.selectedWindow || !overlayRef.value) return;
 
   // Middle-click or Ctrl+click = pan
@@ -146,29 +157,36 @@ function onMouseDown(e: MouseEvent) {
     isPanning.value = true;
     panStart.value = { x: e.clientX, y: e.clientY };
     panOrigin.value = { x: panX.value, y: panY.value };
+    document.addEventListener("mousemove", onDocumentMouseMove);
+    document.addEventListener("mouseup", onDocumentMouseUp);
     return;
   }
 
   const local = toLocalCoords(e);
-  if (!local) return;
   dragStart.value = local;
   dragCurrent.value = local;
   isDragging.value = true;
+  // Listen on document so drag continues outside the overlay
+  document.addEventListener("mousemove", onDocumentMouseMove);
+  document.addEventListener("mouseup", onDocumentMouseUp);
 }
 
-function onMouseMove(e: MouseEvent) {
+function onDocumentMouseMove(e: MouseEvent) {
   if (isPanning.value) {
     panX.value = panOrigin.value.x + (e.clientX - panStart.value.x);
     panY.value = panOrigin.value.y + (e.clientY - panStart.value.y);
     return;
   }
   if (!isDragging.value) return;
+  // Coords are clamped to image bounds even when mouse is outside
   const local = toLocalCoords(e);
-  if (!local) return;
   dragCurrent.value = local;
 }
 
-function onMouseUp() {
+function onDocumentMouseUp() {
+  document.removeEventListener("mousemove", onDocumentMouseMove);
+  document.removeEventListener("mouseup", onDocumentMouseUp);
+
   if (isPanning.value) {
     isPanning.value = false;
     return;
@@ -177,7 +195,6 @@ function onMouseUp() {
   isDragging.value = false;
   const region = drawingRegion.value;
   if (region && region.width > 10 && region.height > 10 && store.selectedWindow) {
-    // Convert window-local to absolute
     const win = store.selectedWindow;
     store.setRegion({
       x: region.x + win.x,
@@ -186,6 +203,12 @@ function onMouseUp() {
       height: region.height,
     });
   }
+}
+
+function selectEntireImage() {
+  if (!store.selectedWindow) return;
+  const win = store.selectedWindow;
+  store.setRegion({ x: win.x, y: win.y, width: win.width, height: win.height });
 }
 
 function onWheel(e: WheelEvent) {
@@ -213,8 +236,12 @@ function onKeyDown(e: KeyboardEvent) {
   }
 }
 
-document.addEventListener("keydown", onKeyDown);
-onUnmounted(() => document.removeEventListener("keydown", onKeyDown));
+onMounted(() => document.addEventListener("keydown", onKeyDown));
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKeyDown);
+  document.removeEventListener("mousemove", onDocumentMouseMove);
+  document.removeEventListener("mouseup", onDocumentMouseUp);
+});
 </script>
 
 <template>
@@ -225,7 +252,8 @@ onUnmounted(() => document.removeEventListener("keydown", onKeyDown));
       <button class="tool-btn" title="Fit to view" @click="zoomFit">⊡</button>
       <span class="zoom-label">{{ Math.round(zoom * fitScale * 100) }}%</span>
       <button class="tool-btn refresh" title="Refresh preview" @click="refreshPreview">↻</button>
-      <span class="hint">Drag to select · Ctrl+drag or middle-click to pan · Scroll to zoom</span>
+      <button class="tool-btn select-all" title="Select entire image" @click="selectEntireImage">▣</button>
+      <span class="hint">Drag to select · Ctrl+drag to pan · Scroll to zoom</span>
     </div>
 
     <div class="viewport" @wheel.prevent="onWheel">
@@ -240,10 +268,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeyDown));
             width: displayWidth + 'px',
             height: displayHeight + 'px',
           }"
-          @mousedown.prevent="onMouseDown"
-          @mousemove="onMouseMove"
-          @mouseup="onMouseUp"
-          @mouseleave="onMouseUp"
+          @mousedown.prevent="onOverlayMouseDown"
         >
           <img
             v-if="store.previewDataUrl"
@@ -303,6 +328,9 @@ onUnmounted(() => document.removeEventListener("keydown", onKeyDown));
 }
 .tool-btn.refresh {
   margin-left: 0.25rem;
+}
+.tool-btn.select-all {
+  margin-left: 0.1rem;
 }
 
 .zoom-label {
