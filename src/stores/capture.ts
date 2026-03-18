@@ -79,12 +79,18 @@ export function isValidTransition(from: BatchState, to: BatchState): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
+export type SidecarStatus = "disconnected" | "connecting" | "connected" | "error";
+
 export const useCaptureStore = defineStore("capture", () => {
   // Window selection state
   const windows = ref<WindowInfo[]>([]);
   const selectedWindow = ref<WindowInfo | null>(null);
   const region = ref<CaptureRegion | null>(null);
   const previewDataUrl = ref<string | null>(null);
+
+  // Sidecar state
+  const sidecarStatus = ref<SidecarStatus>("disconnected");
+  const sidecarError = ref<string | null>(null);
 
   // Batch capture state
   const batchState = ref<BatchState>("idle");
@@ -158,6 +164,11 @@ export const useCaptureStore = defineStore("capture", () => {
     }
   }
 
+  function setSidecarStatus(status: SidecarStatus, error?: string) {
+    sidecarStatus.value = status;
+    sidecarError.value = error ?? null;
+  }
+
   return {
     // Window selection
     windows,
@@ -170,6 +181,10 @@ export const useCaptureStore = defineStore("capture", () => {
     setRegion,
     setPreview,
     clearSelection,
+    // Sidecar
+    sidecarStatus,
+    sidecarError,
+    setSidecarStatus,
     // Batch capture
     batchState,
     batchConfig,

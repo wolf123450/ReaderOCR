@@ -3,6 +3,10 @@
         "cargo check": true,
         "cargo test": true,
         "npx vitest": true,
-        "git commit": true
+        "git commit": true,
+        "/^cd D:\\\\Projects\\\\KindleOCR\\\\src-python; python -m pytest tests/ -v 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

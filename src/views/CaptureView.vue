@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import WindowPicker from "@/components/WindowPicker.vue";
 import RegionSelector from "@/components/RegionSelector.vue";
 import ProgressTracker from "@/components/ProgressTracker.vue";
+import SidecarStatus from "@/components/SidecarStatus.vue";
 import { useCaptureStore, type CaptureProgress } from "@/stores/capture";
 
 const store = useCaptureStore();
@@ -86,7 +87,10 @@ function resetCapture() {
 
 <template>
   <div class="capture-view">
-    <h2>Screen Capture Setup</h2>
+    <div class="view-header">
+      <h2>Screen Capture Setup</h2>
+      <SidecarStatus />
+    </div>
 
     <WindowPicker />
 
@@ -145,6 +149,17 @@ function resetCapture() {
 <style scoped>
 .capture-view {
   padding: 1rem;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.view-header h2 {
+  margin: 0;
 }
 
 .selection-summary {
