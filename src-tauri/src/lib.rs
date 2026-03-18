@@ -1,13 +1,16 @@
 mod capture;
 mod keyboard;
+mod sidecar;
 
 use std::sync::Mutex;
 use tauri::Emitter;
+use tauri::Manager;
 use capture::windows_api::WindowInfo;
 use capture::region::{CaptureRequest, CaptureResult, PreviewRequest, PreviewResult};
 use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
 use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};
 use keyboard::input::{PageTurnConfig, PageTurnResult};
+use sidecar::client::SidecarClient;
 
 #[tauri::command]
 fn list_windows() -> Result<Vec<WindowInfo>, String> {
@@ -149,10 +152,23 @@ fn stop_batch_capture(control: tauri::State<'_, Mutex<BatchControl>>) -> Result<
     Ok(())
 }
 
+#[tauri::command]
+fn sidecar_status(client: tauri::State<'_, Mutex<SidecarClient>>) -> Result<bool, String> {
+    let guard = client.lock().map_err(|e| e.to_string())?;
+    Ok(guard.is_running())
+}
+
+#[tauri::command]
+fn sidecar_ping(client: tauri::State<'_, Mutex<SidecarClient>>) -> Result<serde_json::Value, String> {
+    let guard = client.lock().map_err(|e| e.to_string())?;
+    guard.call::<serde_json::Value, serde_json::Value>("ping", serde_json::json!({}))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(BatchControl::new()))
+    .manage(Mutex::new(SidecarClient::new()))
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -161,6 +177,33 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // Spawn sidecar in background so it doesn't block app startup
+      let sidecar_state = app.state::<Mutex<SidecarClient>>();
+      let client = sidecar_state.lock().expect("Failed to lock sidecar state");
+
+      // Resolve Python path: prefer venv, fall back to system python
+      let resource_dir = app.path().resource_dir().unwrap_or_default();
+      let src_python_dir = resource_dir.parent()
+          .and_then(|p: &std::path::Path| p.parent())
+          .and_then(|p: &std::path::Path| p.parent())
+          .map(|p: &std::path::Path| p.join("src-python"))
+          .unwrap_or_else(|| std::path::PathBuf::from("src-python"));
+
+      let venv_python = src_python_dir.join(".venv").join("Scripts").join("python.exe");
+      let python_path = if venv_python.exists() {
+          venv_python.to_string_lossy().to_string()
+      } else {
+          "python".to_string()
+      };
+
+      let project_dir = src_python_dir.to_string_lossy().to_string();
+
+      match client.spawn(&python_path, &project_dir) {
+          Ok(()) => log::info!("Sidecar spawned successfully"),
+          Err(e) => log::warn!("Failed to spawn sidecar: {e}"),
+      }
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -172,7 +215,9 @@ pub fn run() {
       start_batch_capture,
       pause_batch_capture,
       resume_batch_capture,
-      stop_batch_capture
+      stop_batch_capture,
+      sidecar_status,
+      sidecar_ping
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
