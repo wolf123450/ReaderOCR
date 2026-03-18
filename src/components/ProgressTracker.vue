@@ -24,6 +24,10 @@ const lastCapture = computed(() => {
   if (store.captureHistory.length === 0) return null;
   return store.captureHistory[store.captureHistory.length - 1];
 });
+
+const errorCount = computed(() =>
+  store.captureHistory.filter((c) => c.status === "error").length
+);
 </script>
 
 <template>
@@ -33,20 +37,25 @@ const lastCapture = computed(() => {
         {{ statusLabel }}
       </span>
       <span class="page-count">
-        Page {{ store.pagesCaptured }}
+        {{ store.pagesCaptured }} page{{ store.pagesCaptured === 1 ? "" : "s" }} captured
         <template v-if="store.batchConfig.maxPages">
           / {{ store.batchConfig.maxPages }}
+        </template>
+        <template v-if="errorCount > 0">
+          · <span class="error-count">{{ errorCount }} error{{ errorCount === 1 ? "" : "s" }}</span>
         </template>
       </span>
     </div>
 
     <div v-if="progressPercent !== null" class="progress-bar">
       <div class="progress-fill" :style="{ width: progressPercent + '%' }" />
+      <span class="progress-label">{{ progressPercent }}%</span>
     </div>
 
     <div v-if="lastCapture" class="last-capture">
+      <span class="last-label">Last:</span>
       <span v-if="lastCapture.status === 'captured'" class="capture-ok">
-        ✓ {{ lastCapture.imagePath }}
+        ✓ Page {{ lastCapture.pageNumber }}
       </span>
       <span v-else class="capture-err">
         ✗ {{ lastCapture.errorMessage }}
@@ -94,6 +103,7 @@ const lastCapture = computed(() => {
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 0.5rem;
+  position: relative;
 }
 
 .progress-fill {
@@ -102,12 +112,31 @@ const lastCapture = computed(() => {
   transition: width 0.3s ease;
 }
 
+.progress-label {
+  position: absolute;
+  right: 0;
+  top: -16px;
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.error-count {
+  color: #e57373;
+}
+
 .last-capture {
   font-size: 0.8rem;
   color: #888;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.last-label {
+  color: #666;
 }
 
 .capture-ok { color: #81c784; }

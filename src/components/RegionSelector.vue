@@ -25,6 +25,9 @@ const isDragging = ref(false);
 const dragStart = ref({ x: 0, y: 0 });
 const dragCurrent = ref({ x: 0, y: 0 });
 
+// Flash effect after region commit
+const justCommitted = ref(false);
+
 // Loading state for preview
 const previewLoading = ref(false);
 
@@ -202,13 +205,20 @@ function onDocumentMouseUp() {
       width: region.width,
       height: region.height,
     });
+    flashCommitted();
   }
+}
+
+function flashCommitted() {
+  justCommitted.value = true;
+  setTimeout(() => { justCommitted.value = false; }, 600);
 }
 
 function selectEntireImage() {
   if (!store.selectedWindow) return;
   const win = store.selectedWindow;
   store.setRegion({ x: win.x, y: win.y, width: win.width, height: win.height });
+  flashCommitted();
 }
 
 function onWheel(e: WheelEvent) {
@@ -283,7 +293,7 @@ onUnmounted(() => {
             No preview available
           </div>
 
-          <div v-if="displayRegion && regionStyle" class="selection-box" :style="regionStyle">
+          <div v-if="displayRegion && regionStyle" class="selection-box" :class="{ committed: justCommitted }" :style="regionStyle">
             <span class="dimension-label">{{ dimensionLabel }}</span>
           </div>
 
@@ -390,6 +400,18 @@ onUnmounted(() => {
   background: rgba(74, 158, 255, 0.15);
   pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.selection-box.committed {
+  border-color: #4caf50;
+  background: rgba(76, 175, 80, 0.25);
+  animation: flash-green 0.6s ease-out;
+}
+
+@keyframes flash-green {
+  0% { border-color: #81c784; background: rgba(76, 175, 80, 0.4); }
+  100% { border-color: #4a9eff; background: rgba(74, 158, 255, 0.15); }
 }
 
 .dimension-label {

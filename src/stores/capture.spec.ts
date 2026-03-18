@@ -201,8 +201,8 @@ describe("isValidTransition", () => {
     expect(isValidTransition("idle", "paused")).toBe(false);
   });
 
-  it("rejects stopped → capturing", () => {
-    expect(isValidTransition("stopped", "capturing")).toBe(false);
+  it("allows stopped → capturing (resume)", () => {
+    expect(isValidTransition("stopped", "capturing")).toBe(true);
   });
 
   it("allows stopped → idle (reset)", () => {
@@ -286,5 +286,97 @@ describe("batch capture state", () => {
     const store = useCaptureStore();
     store.setBatchConfig({ delayBetweenMs: 50 });
     expect(store.batchConfig.delayBetweenMs).toBe(200);
+  });
+
+  it("allows resume from stopped (stopped → capturing)", () => {
+    const store = useCaptureStore();
+    store.transitionTo("capturing");
+    store.recordCapture({
+      pageNumber: 1,
+      totalPages: null,
+      imagePath: "test/page-001.png",
+      status: "captured",
+    });
+    store.transitionTo("stopped");
+    expect(store.pagesCaptured).toBe(1);
+    // Resume should preserve captured pages
+    expect(store.transitionTo("capturing")).toBe(true);
+    expect(store.batchState).toBe("capturing");
+    expect(store.pagesCaptured).toBe(1);
+  });
+
+  it("tracks capturedPages with capture type", () => {
+    const store = useCaptureStore();
+    store.transitionTo("capturing");
+    store.setNextCaptureType("cover");
+    store.recordCapture({
+      pageNumber: 1,
+      totalPages: null,
+      imagePath: "test/page-001.png",
+      status: "captured",
+    });
+    expect(store.capturedPages).toHaveLength(1);
+    expect(store.capturedPages[0].captureType).toBe("cover");
+    expect(store.capturedPages[0].status).toBe("ok");
+
+    store.setNextCaptureType("page");
+    store.recordCapture({
+      pageNumber: 2,
+      totalPages: null,
+      imagePath: "test/page-002.png",
+      status: "captured",
+    });
+    expect(store.capturedPages).toHaveLength(2);
+    expect(store.capturedPages[1].captureType).toBe("page");
+  });
+
+  it("records error captures in capturedPages", () => {
+    const store = useCaptureStore();
+    store.transitionTo("capturing");
+    store.recordCapture({
+      pageNumber: 1,
+      totalPages: null,
+      imagePath: "test/page-001.png",
+      status: "error",
+      errorMessage: "Capture failed",
+    });
+    expect(store.capturedPages).toHaveLength(1);
+    expect(store.capturedPages[0].status).toBe("error");
+    expect(store.capturedPages[0].errorMessage).toBe("Capture failed");
+  });
+});
+
+describe("project settings", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("computes effectiveOutputDir with book name", () => {
+    const store = useCaptureStore();
+    store.setBatchConfig({ outputDir: "C:\\captures" });
+    store.setBookName("My Book");
+    expect(store.effectiveOutputDir).toBe("C:\\captures\\My Book");
+  });
+
+  it("returns base dir when book name is empty", () => {
+    const store = useCaptureStore();
+    store.setBatchConfig({ outputDir: "C:\\captures" });
+    store.setBookName("");
+    expect(store.effectiveOutputDir).toBe("C:\\captures");
+  });
+
+  it("returns empty when outputDir is empty", () => {
+    const store = useCaptureStore();
+    store.setBookName("My Book");
+    expect(store.effectiveOutputDir).toBe("");
+  });
+
+  it("sets and reads capture type", () => {
+    const store = useCaptureStore();
+    expect(store.nextCaptureType).toBe("page");
+    store.setNextCaptureType("cover");
+    expect(store.nextCaptureType).toBe("cover");
+    store.setNextCaptureType("illustration");
+    expect(store.nextCaptureType).toBe("illustration");
   });
 });
