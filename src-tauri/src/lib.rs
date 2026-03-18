@@ -4,7 +4,7 @@ mod keyboard;
 use std::sync::Mutex;
 use tauri::Emitter;
 use capture::windows_api::WindowInfo;
-use capture::region::{CaptureRequest, CaptureResult};
+use capture::region::{CaptureRequest, CaptureResult, PreviewRequest, PreviewResult};
 use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
 use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};
 use keyboard::input::{PageTurnConfig, PageTurnResult};
@@ -17,6 +17,11 @@ fn list_windows() -> Result<Vec<WindowInfo>, String> {
 #[tauri::command]
 fn capture_region(request: CaptureRequest) -> Result<CaptureResult, String> {
     capture::region::capture_region(&request)
+}
+
+#[tauri::command]
+fn capture_preview(request: PreviewRequest) -> Result<PreviewResult, String> {
+    capture::region::capture_preview(&request)
 }
 
 #[tauri::command]
@@ -161,6 +166,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       list_windows,
       capture_region,
+      capture_preview,
       send_page_turn,
       check_duplicate,
       start_batch_capture,
