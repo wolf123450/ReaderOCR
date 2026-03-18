@@ -84,6 +84,7 @@ export const useCaptureStore = defineStore("capture", () => {
   const windows = ref<WindowInfo[]>([]);
   const selectedWindow = ref<WindowInfo | null>(null);
   const region = ref<CaptureRegion | null>(null);
+  const previewDataUrl = ref<string | null>(null);
 
   // Batch capture state
   const batchState = ref<BatchState>("idle");
@@ -111,6 +112,7 @@ export const useCaptureStore = defineStore("capture", () => {
   function selectWindow(w: WindowInfo) {
     selectedWindow.value = w;
     region.value = null;
+    previewDataUrl.value = null;
   }
 
   function setRegion(r: CaptureRegion) {
@@ -118,9 +120,14 @@ export const useCaptureStore = defineStore("capture", () => {
     region.value = clampRegion(r, selectedWindow.value);
   }
 
+  function setPreview(dataUrl: string | null) {
+    previewDataUrl.value = dataUrl;
+  }
+
   function clearSelection() {
     selectedWindow.value = null;
     region.value = null;
+    previewDataUrl.value = null;
   }
 
   function setBatchConfig(config: Partial<BatchCaptureConfig>) {
@@ -156,10 +163,12 @@ export const useCaptureStore = defineStore("capture", () => {
     windows,
     selectedWindow,
     region,
+    previewDataUrl,
     hasSelection,
     setWindows,
     selectWindow,
     setRegion,
+    setPreview,
     clearSelection,
     // Batch capture
     batchState,

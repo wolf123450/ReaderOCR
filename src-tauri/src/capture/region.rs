@@ -1,6 +1,7 @@
 use image::{DynamicImage, ImageFormat, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Cursor;
 use std::path::Path;
 use xcap::Monitor;
 
@@ -91,6 +92,70 @@ pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
         width: crop_w,
         height: crop_h,
         file_size_bytes: file_size,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PreviewRequest {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PreviewResult {
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Capture a screen region and return as a base64-encoded PNG data URL.
+pub fn capture_preview(req: &PreviewRequest) -> Result<PreviewResult, String> {
+    use base64::Engine;
+
+    let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
+
+    let monitor = monitors
+        .into_iter()
+        .find(|m| {
+            let (Ok(mx), Ok(my), Ok(mw), Ok(mh)) = (m.x(), m.y(), m.width(), m.height()) else {
+                return false;
+            };
+            req.x >= mx && req.y >= my && req.x < mx + (mw as i32) && req.y < my + (mh as i32)
+        })
+        .ok_or_else(|| format!("No monitor found containing point ({}, {})", req.x, req.y))?;
+
+    let screenshot = monitor
+        .capture_image()
+        .map_err(|e| format!("Screen capture failed: {e}"))?;
+
+    let mon_x = monitor.x().map_err(|e| format!("Failed to get monitor x: {e}"))?;
+    let mon_y = monitor.y().map_err(|e| format!("Failed to get monitor y: {e}"))?;
+    let crop_x = ((req.x - mon_x) as u32).min(screenshot.width());
+    let crop_y = ((req.y - mon_y) as u32).min(screenshot.height());
+    let crop_w = req.width.min(screenshot.width().saturating_sub(crop_x));
+    let crop_h = req.height.min(screenshot.height().saturating_sub(crop_y));
+
+    if crop_w == 0 || crop_h == 0 {
+        return Err("Preview region has zero area".to_string());
+    }
+
+    let rgba: RgbaImage = screenshot;
+    let cropped = DynamicImage::ImageRgba8(rgba).crop_imm(crop_x, crop_y, crop_w, crop_h);
+
+    let mut buf = Cursor::new(Vec::new());
+    cropped
+        .write_to(&mut buf, ImageFormat::Png)
+        .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    let data_url = format!("data:image/png;base64,{}", b64);
+
+    Ok(PreviewResult {
+        data_url,
+        width: crop_w,
+        height: crop_h,
     })
 }
 
