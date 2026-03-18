@@ -5,7 +5,8 @@ use std::sync::Mutex;
 use tauri::Emitter;
 use capture::windows_api::WindowInfo;
 use capture::region::{CaptureRequest, CaptureResult};
-use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page};
+use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
+use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};
 use keyboard::input::{PageTurnConfig, PageTurnResult};
 
 #[tauri::command]
@@ -21,6 +22,11 @@ fn capture_region(request: CaptureRequest) -> Result<CaptureResult, String> {
 #[tauri::command]
 fn send_page_turn(config: PageTurnConfig) -> Result<PageTurnResult, String> {
     keyboard::input::send_page_turn(&config)
+}
+
+#[tauri::command]
+fn check_duplicate(request: DuplicateCheckRequest) -> Result<DuplicateCheckResult, String> {
+    capture::duplicate::check_duplicate(&request)
 }
 
 #[tauri::command]
@@ -64,10 +70,27 @@ async fn start_batch_capture(
         let progress = capture_single_page(&config, page_num);
         let _ = app.emit("capture-progress", &progress);
         let had_error = progress.status == "error";
+        let current_path = progress.image_path.clone();
         results.push(progress);
 
         if had_error {
             break;
+        }
+
+        // Duplicate detection: compare with previous page
+        if page_num > 1 {
+            let prev_path = format_page_path(&config.output_dir, &config.file_prefix, page_num - 1);
+            let dup_req = DuplicateCheckRequest {
+                image_path_a: prev_path,
+                image_path_b: current_path,
+                threshold: 5,
+            };
+            if let Ok(dup_result) = capture::duplicate::check_duplicate(&dup_req) {
+                if dup_result.is_duplicate {
+                    let _ = app.emit("capture-duplicate-detected", &dup_result);
+                    break;
+                }
+            }
         }
 
         // Check max pages
@@ -139,6 +162,7 @@ pub fn run() {
       list_windows,
       capture_region,
       send_page_turn,
+      check_duplicate,
       start_batch_capture,
       pause_batch_capture,
       resume_batch_capture,
