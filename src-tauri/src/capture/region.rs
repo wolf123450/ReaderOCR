@@ -22,27 +22,41 @@ pub struct CaptureResult {
     pub file_size_bytes: u64,
 }
 
-/// Capture a region of the screen and save as PNG.
-pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
-    // Find the monitor containing the capture point
+/// Clamp a capture region so that negative coordinates (e.g. from maximized
+/// windows whose frame extends past the screen edge) are brought to the
+/// monitor origin, shrinking width/height by the same amount.
+fn clamp_to_screen(x: i32, y: i32, width: u32, height: u32) -> (i32, i32, u32, u32) {
+    let dx = x.min(0).unsigned_abs();  // amount to trim on the left
+    let dy = y.min(0).unsigned_abs();  // amount to trim on the top
+    (
+        x + dx as i32,
+        y + dy as i32,
+        width.saturating_sub(dx),
+        height.saturating_sub(dy),
+    )
+}
+
+/// Find the monitor whose area contains the given point.
+fn find_monitor(x: i32, y: i32) -> Result<Monitor, String> {
     let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
 
-    let monitor = monitors
+    monitors
         .into_iter()
         .find(|m| {
             let (Ok(mx), Ok(my), Ok(mw), Ok(mh)) = (m.x(), m.y(), m.width(), m.height()) else {
                 return false;
             };
-            let mw = mw as i32;
-            let mh = mh as i32;
-            req.x >= mx && req.y >= my && req.x < mx + mw && req.y < my + mh
+            x >= mx && y >= my && x < mx + (mw as i32) && y < my + (mh as i32)
         })
-        .ok_or_else(|| {
-            format!(
-                "No monitor found containing point ({}, {})",
-                req.x, req.y
-            )
-        })?;
+        .ok_or_else(|| format!("No monitor found containing point ({x}, {y})"))
+}
+
+/// Capture a region of the screen and save as PNG.
+pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
+    // Clamp negative coords from maximized windows
+    let (cx, cy, cw, ch) = clamp_to_screen(req.x, req.y, req.width, req.height);
+
+    let monitor = find_monitor(cx, cy)?;
 
     // Capture the full monitor
     let screenshot = monitor
@@ -52,16 +66,12 @@ pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
     // Calculate crop coordinates relative to the monitor
     let mon_x = monitor.x().map_err(|e| format!("Failed to get monitor x: {e}"))?;
     let mon_y = monitor.y().map_err(|e| format!("Failed to get monitor y: {e}"))?;
-    let crop_x = ((req.x - mon_x) as u32).min(screenshot.width());
-    let crop_y = ((req.y - mon_y) as u32).min(screenshot.height());
+    let crop_x = ((cx - mon_x) as u32).min(screenshot.width());
+    let crop_y = ((cy - mon_y) as u32).min(screenshot.height());
 
     // Clamp width/height to not exceed image bounds
-    let crop_w = req
-        .width
-        .min(screenshot.width().saturating_sub(crop_x));
-    let crop_h = req
-        .height
-        .min(screenshot.height().saturating_sub(crop_y));
+    let crop_w = cw.min(screenshot.width().saturating_sub(crop_x));
+    let crop_h = ch.min(screenshot.height().saturating_sub(crop_y));
 
     if crop_w == 0 || crop_h == 0 {
         return Err("Capture region has zero area after clamping to monitor bounds".to_string());
@@ -114,17 +124,10 @@ pub struct PreviewResult {
 pub fn capture_preview(req: &PreviewRequest) -> Result<PreviewResult, String> {
     use base64::Engine;
 
-    let monitors = Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {e}"))?;
+    // Clamp negative coords from maximized windows
+    let (cx, cy, cw, ch) = clamp_to_screen(req.x, req.y, req.width, req.height);
 
-    let monitor = monitors
-        .into_iter()
-        .find(|m| {
-            let (Ok(mx), Ok(my), Ok(mw), Ok(mh)) = (m.x(), m.y(), m.width(), m.height()) else {
-                return false;
-            };
-            req.x >= mx && req.y >= my && req.x < mx + (mw as i32) && req.y < my + (mh as i32)
-        })
-        .ok_or_else(|| format!("No monitor found containing point ({}, {})", req.x, req.y))?;
+    let monitor = find_monitor(cx, cy)?;
 
     let screenshot = monitor
         .capture_image()
@@ -132,10 +135,10 @@ pub fn capture_preview(req: &PreviewRequest) -> Result<PreviewResult, String> {
 
     let mon_x = monitor.x().map_err(|e| format!("Failed to get monitor x: {e}"))?;
     let mon_y = monitor.y().map_err(|e| format!("Failed to get monitor y: {e}"))?;
-    let crop_x = ((req.x - mon_x) as u32).min(screenshot.width());
-    let crop_y = ((req.y - mon_y) as u32).min(screenshot.height());
-    let crop_w = req.width.min(screenshot.width().saturating_sub(crop_x));
-    let crop_h = req.height.min(screenshot.height().saturating_sub(crop_y));
+    let crop_x = ((cx - mon_x) as u32).min(screenshot.width());
+    let crop_y = ((cy - mon_y) as u32).min(screenshot.height());
+    let crop_w = cw.min(screenshot.width().saturating_sub(crop_x));
+    let crop_h = ch.min(screenshot.height().saturating_sub(crop_y));
 
     if crop_w == 0 || crop_h == 0 {
         return Err("Preview region has zero area".to_string());
