@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import CaptureView from "@/views/CaptureView.vue";
 </script>
 
 <template>
-  <main>
-    <h1>KindleOCR</h1>
-    <p>Book image to EPUB converter</p>
-  </main>
+  <div class="app-shell">
+    <header class="app-header">
+      <h1>KindleOCR</h1>
+    </header>
+    <main>
+      <CaptureView />
+    </main>
+  </div>
 </template>
 
 <style>
@@ -23,11 +28,21 @@
   }
 }
 
-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.app-shell {
   min-height: 100vh;
+}
+
+.app-header {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #444;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+main {
+  padding: 0;
 }
 </style>
