@@ -20,8 +20,11 @@ export interface CaptureRegion {
 
 export type BatchState = "idle" | "capturing" | "paused" | "stopped" | "completed";
 
+export type CaptureType = "page" | "cover" | "illustration";
+
 export interface BatchCaptureConfig {
   outputDir: string;
+  bookName: string;
   delayBetweenMs: number;
   maxPages: number | null;
   filePrefix: string;
@@ -33,6 +36,15 @@ export interface CaptureProgress {
   totalPages: number | null;
   imagePath: string;
   status: "captured" | "error";
+  errorMessage?: string;
+}
+
+export interface CapturedPage {
+  pageNumber: number;
+  imagePath: string;
+  captureType: CaptureType;
+  timestamp: number;
+  status: "ok" | "error";
   errorMessage?: string;
 }
 
@@ -70,7 +82,7 @@ const VALID_TRANSITIONS: Record<BatchState, BatchState[]> = {
   idle: ["capturing"],
   capturing: ["paused", "stopped", "completed"],
   paused: ["capturing", "stopped"],
-  stopped: ["idle"],
+  stopped: ["idle", "capturing"],
   completed: ["idle"],
 };
 
@@ -92,10 +104,15 @@ export const useCaptureStore = defineStore("capture", () => {
   const sidecarStatus = ref<SidecarStatus>("disconnected");
   const sidecarError = ref<string | null>(null);
 
+  // Project state
+  const bookName = ref("");
+  const nextCaptureType = ref<CaptureType>("page");
+
   // Batch capture state
   const batchState = ref<BatchState>("idle");
   const batchConfig = ref<BatchCaptureConfig>({
     outputDir: "",
+    bookName: "",
     delayBetweenMs: 1500,
     maxPages: null,
     filePrefix: "page",
@@ -103,6 +120,7 @@ export const useCaptureStore = defineStore("capture", () => {
   });
   const pagesCaptured = ref(0);
   const captureHistory = ref<CaptureProgress[]>([]);
+  const capturedPages = ref<CapturedPage[]>([]);
 
   const hasSelection = computed(
     () => selectedWindow.value !== null && region.value !== null
@@ -110,6 +128,16 @@ export const useCaptureStore = defineStore("capture", () => {
 
   const isCapturing = computed(() => batchState.value === "capturing");
   const isPaused = computed(() => batchState.value === "paused");
+  const isStopped = computed(() => batchState.value === "stopped");
+
+  /** Effective output directory: outputDir / bookName */
+  const effectiveOutputDir = computed(() => {
+    const base = batchConfig.value.outputDir;
+    const name = bookName.value.trim();
+    if (!base) return "";
+    if (!name) return base;
+    return `${base}\\${name}`;
+  });
 
   function setWindows(list: WindowInfo[]) {
     windows.value = list;
@@ -153,6 +181,7 @@ export const useCaptureStore = defineStore("capture", () => {
     if (newState === "idle") {
       pagesCaptured.value = 0;
       captureHistory.value = [];
+      capturedPages.value = [];
     }
     return true;
   }
@@ -161,12 +190,36 @@ export const useCaptureStore = defineStore("capture", () => {
     captureHistory.value.push(progress);
     if (progress.status === "captured") {
       pagesCaptured.value = progress.pageNumber;
+      capturedPages.value.push({
+        pageNumber: progress.pageNumber,
+        imagePath: progress.imagePath,
+        captureType: nextCaptureType.value,
+        timestamp: Date.now(),
+        status: "ok",
+      });
+    } else {
+      capturedPages.value.push({
+        pageNumber: progress.pageNumber,
+        imagePath: progress.imagePath,
+        captureType: nextCaptureType.value,
+        timestamp: Date.now(),
+        status: "error",
+        errorMessage: progress.errorMessage,
+      });
     }
   }
 
   function setSidecarStatus(status: SidecarStatus, error?: string) {
     sidecarStatus.value = status;
     sidecarError.value = error ?? null;
+  }
+
+  function setBookName(name: string) {
+    bookName.value = name;
+  }
+
+  function setNextCaptureType(type: CaptureType) {
+    nextCaptureType.value = type;
   }
 
   return {
@@ -185,13 +238,21 @@ export const useCaptureStore = defineStore("capture", () => {
     sidecarStatus,
     sidecarError,
     setSidecarStatus,
+    // Project
+    bookName,
+    nextCaptureType,
+    effectiveOutputDir,
+    setBookName,
+    setNextCaptureType,
     // Batch capture
     batchState,
     batchConfig,
     pagesCaptured,
     captureHistory,
+    capturedPages,
     isCapturing,
     isPaused,
+    isStopped,
     setBatchConfig,
     transitionTo,
     recordCapture,

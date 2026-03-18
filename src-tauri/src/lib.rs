@@ -56,7 +56,7 @@ async fn start_batch_capture(
 
     let delay = std::cmp::max(config.delay_between_ms, 200);
     let mut results: Vec<CaptureProgress> = Vec::new();
-    let mut page_num: u32 = 1;
+    let mut page_num: u32 = config.start_page;
 
     loop {
         if ctrl.is_stopped() {
@@ -167,6 +167,7 @@ fn sidecar_ping(client: tauri::State<'_, Mutex<SidecarClient>>) -> Result<serde_
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_dialog::init())
     .manage(Mutex::new(BatchControl::new()))
     .manage(Mutex::new(SidecarClient::new()))
     .setup(|app| {
