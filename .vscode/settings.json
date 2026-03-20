@@ -7,6 +7,7 @@
         "/^cd D:\\\\Projects\\\\KindleOCR\\\\src-python; python -m pytest tests/ -v 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "npm run test:unit": true
     }
 }
