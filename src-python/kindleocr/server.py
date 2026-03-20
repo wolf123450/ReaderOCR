@@ -5,6 +5,7 @@ and writes JSON-RPC responses to stdout (one per line).
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 import time
@@ -17,6 +18,9 @@ from kindleocr.protocol import (
     JsonRpcErrorResponse,
     JsonRpcSuccessResponse,
 )
+from kindleocr.ocr.preprocessing import PreprocessImageParams, preprocess_image
+from kindleocr.ocr.engine import OcrProcessPageParams
+from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
 
 class JsonRpcServer:
@@ -102,12 +106,43 @@ class JsonRpcServer:
 
 def create_server() -> JsonRpcServer:
     """Create and configure the server with all method handlers."""
-    return JsonRpcServer()
+    server = JsonRpcServer()
+    server.register("preprocess_image", _handle_preprocess_image)
+    server.register("ocr_page", _handle_ocr_page)
+    return server
 
 
 def main() -> None:
     server = create_server()
     server.run()
+
+
+# ---------------------------------------------------------------------------
+# Method handlers
+# ---------------------------------------------------------------------------
+
+def _handle_preprocess_image(params: Dict[str, Any]) -> Dict[str, Any]:
+    """JSON-RPC handler for 'preprocess_image'."""
+    p = PreprocessImageParams(
+        image_path=params["image_path"],
+        output_path=params["output_path"],
+        auto_crop=params.get("auto_crop", True),
+        deskew=params.get("deskew", True),
+        normalize_contrast=params.get("normalize_contrast", True),
+    )
+    result = preprocess_image(p)
+    return dataclasses.asdict(result)
+
+
+def _handle_ocr_page(params: Dict[str, Any]) -> Dict[str, Any]:
+    """JSON-RPC handler for 'ocr_page'."""
+    p = OcrProcessPageParams(
+        image_path=params["image_path"],
+        engine=params.get("engine", "ppocr"),
+        page_index=params.get("page_index", 0),
+    )
+    result = ocr_page_paddle(p)
+    return dataclasses.asdict(result)
 
 
 if __name__ == "__main__":
