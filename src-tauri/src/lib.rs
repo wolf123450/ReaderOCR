@@ -63,10 +63,13 @@ async fn start_batch_capture(
         width: config.width,
         height: config.height,
     };
+    // Store the base output dir (without the book-name subfolder) so that
+    // reloading sets outputDir = base and bookName = subfolder correctly.
+    let base_output_dir = strip_book_name_suffix(&config.output_dir, &config.book_name);
     let existing = read_session(&config.output_dir);
     let session = SessionData {
         book_name: config.book_name.clone(),
-        output_dir: config.output_dir.clone(),
+        output_dir: base_output_dir.clone(),
         file_prefix: config.file_prefix.clone(),
         page_turn_key: config.page_turn_key.clone(),
         delay_between_ms: config.delay_between_ms,
@@ -178,6 +181,23 @@ async fn start_batch_capture(
     });
 
     Ok(())
+}
+
+/// Strip `\book_name` or `/book_name` suffix from `dir` if present.
+/// Used to recover the base output directory from the effective dir.
+fn strip_book_name_suffix(dir: &str, book_name: &str) -> String {
+    if book_name.is_empty() {
+        return dir.to_string();
+    }
+    let suffix_bs = format!("\\{book_name}");
+    let suffix_fs = format!("/{book_name}");
+    if dir.ends_with(&suffix_bs) {
+        dir[..dir.len() - suffix_bs.len()].to_string()
+    } else if dir.ends_with(&suffix_fs) {
+        dir[..dir.len() - suffix_fs.len()].to_string()
+    } else {
+        dir.to_string()
+    }
 }
 
 #[tauri::command]

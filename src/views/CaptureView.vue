@@ -88,8 +88,14 @@ async function tryLoadSession(dir: string) {
     const session = await invoke<SessionData | null>("load_session", { dir });
     if (session) {
       store.setBookName(session.bookName);
+      // Defensively strip the book-name suffix from outputDir in case the
+      // session was written with the old (effective-dir) format.
+      const baseDir =
+        session.bookName && session.outputDir.toLowerCase().endsWith(`\\${session.bookName.toLowerCase()}`)
+          ? session.outputDir.slice(0, -(session.bookName.length + 1))
+          : session.outputDir;
       store.setBatchConfig({
-        outputDir: session.outputDir,
+        outputDir: baseDir,
         filePrefix: session.filePrefix,
         pageTurnKey: session.pageTurnKey,
         delayBetweenMs: session.delayBetweenMs,
