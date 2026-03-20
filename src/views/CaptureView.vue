@@ -16,18 +16,45 @@ const delayMs = ref(1500);
 const maxPages = ref<number | null>(null);
 const filePrefix = ref("page");
 const pageTurnKey = ref("Right");
+const captureError = ref<string | null>(null);
+const sessionLoaded = ref(false);
+
+interface SessionData {
+  bookName: string;
+  outputDir: string;
+  filePrefix: string;
+  pageTurnKey: string;
+  delayBetweenMs: number;
+  maxPages: number | null;
+  pagesCaptured: number;
+  region: { x: number; y: number; width: number; height: number };
+  createdAt: string;
+  updatedAt: string;
+}
 
 // Event listeners for real-time progress
 let unlistenProgress: UnlistenFn | null = null;
 let unlistenDuplicate: UnlistenFn | null = null;
+let unlistenCompleted: UnlistenFn | null = null;
+let unlistenStopped: UnlistenFn | null = null;
 
 onMounted(async () => {
   unlistenProgress = await listen<CaptureProgress>("capture-progress", (event) => {
     store.recordCapture(event.payload);
   });
   unlistenDuplicate = await listen("capture-duplicate-detected", () => {
-    if (store.batchState === "capturing") {
+    if (store.batchState === "capturing" || store.batchState === "paused") {
       store.transitionTo("completed");
+    }
+  });
+  unlistenCompleted = await listen("capture-completed", () => {
+    if (store.batchState === "capturing" || store.batchState === "paused") {
+      store.transitionTo("completed");
+    }
+  });
+  unlistenStopped = await listen("capture-stopped", () => {
+    if (store.batchState === "capturing" || store.batchState === "paused") {
+      store.transitionTo("stopped");
     }
   });
 });
@@ -35,6 +62,8 @@ onMounted(async () => {
 onUnmounted(() => {
   unlistenProgress?.();
   unlistenDuplicate?.();
+  unlistenCompleted?.();
+  unlistenStopped?.();
 });
 
 const selectionSummary = computed(() => {
@@ -52,6 +81,38 @@ const canStart = computed(
     store.batchConfig.outputDir.trim() !== ""
 );
 
+/** Try to load a session from the effective output dir. */
+async function tryLoadSession(dir: string) {
+  if (!dir) return;
+  try {
+    const session = await invoke<SessionData | null>("load_session", { dir });
+    if (session) {
+      store.setBookName(session.bookName);
+      store.setBatchConfig({
+        outputDir: session.outputDir,
+        filePrefix: session.filePrefix,
+        pageTurnKey: session.pageTurnKey,
+        delayBetweenMs: session.delayBetweenMs,
+        maxPages: session.maxPages,
+      });
+      filePrefix.value = session.filePrefix;
+      pageTurnKey.value = session.pageTurnKey;
+      delayMs.value = session.delayBetweenMs;
+      maxPages.value = session.maxPages;
+      // Restore captured page count so resume starts from the right page.
+      store.restorePagesCaptured(session.pagesCaptured);
+      if (session.pagesCaptured > 0) {
+        store.transitionTo("stopped");
+      }
+      sessionLoaded.value = true;
+    } else {
+      sessionLoaded.value = false;
+    }
+  } catch {
+    sessionLoaded.value = false;
+  }
+}
+
 async function browseOutputDir() {
   const selected = await open({
     directory: true,
@@ -59,7 +120,14 @@ async function browseOutputDir() {
     title: "Select output directory",
   });
   if (selected) {
-    store.setBatchConfig({ outputDir: selected as string });
+    const dir = selected as string;
+    store.setBatchConfig({ outputDir: dir });
+    // After picking a directory, if there's a book name set, check
+    // the effective dir; otherwise check the base dir.
+    const effectiveDir = store.bookName.trim()
+      ? `${dir}\\${store.bookName.trim()}`
+      : dir;
+    await tryLoadSession(effectiveDir);
   }
 }
 
@@ -77,29 +145,31 @@ async function startCapture(resume = false) {
   });
 
   const startPage = resume ? store.pagesCaptured + 1 : 1;
+  captureError.value = null;
   store.transitionTo("capturing");
 
   try {
-    await invoke<CaptureProgress[]>("start_batch_capture", {
+    // start_batch_capture now returns immediately (Ok(()));
+    // all progress comes via events.
+    await invoke("start_batch_capture", {
       config: {
-        x: store.region.x,
-        y: store.region.y,
-        width: store.region.width,
-        height: store.region.height,
+        x: Math.round(store.region.x),
+        y: Math.round(store.region.y),
+        width: Math.round(store.region.width),
+        height: Math.round(store.region.height),
         window_handle: store.selectedWindow.handle,
         output_dir: outputDir,
         delay_between_ms: Math.max(delayMs.value, 200),
-        max_pages: maxPages.value,
+        max_pages: typeof maxPages.value === "number" && !Number.isNaN(maxPages.value) ? maxPages.value : null,
         file_prefix: filePrefix.value,
         page_turn_key: pageTurnKey.value,
         start_page: startPage,
+        book_name: store.bookName,
       },
     });
-    // Progress is tracked in real-time via events
-    if (store.batchState === "capturing") {
-      store.transitionTo("completed");
-    }
   } catch (e) {
+    console.error("Batch capture failed:", e);
+    captureError.value = String(e);
     if (store.batchState === "capturing") {
       store.transitionTo("stopped");
     }
@@ -118,11 +188,12 @@ async function resumeCapture() {
 
 async function stopCapture() {
   await invoke("stop_batch_capture");
-  store.transitionTo("stopped");
+  // The capture-stopped event will fire and trigger the state transition.
 }
 
 function resetCapture() {
   store.transitionTo("idle");
+  sessionLoaded.value = false;
 }
 
 function continueCapture() {
@@ -145,6 +216,12 @@ function continueCapture() {
     <div v-if="store.region && store.selectedWindow && !store.isCapturing" class="region-confirmed">
       <span class="check">✓</span>
       Region selected: {{ store.region.width }}×{{ store.region.height }} px
+    </div>
+
+    <!-- Session loaded banner -->
+    <div v-if="sessionLoaded" class="session-loaded">
+      <span class="check">↩</span>
+      Session loaded — {{ store.pagesCaptured }} page{{ store.pagesCaptured === 1 ? '' : 's' }} captured previously. Ready to resume.
     </div>
 
     <div v-if="selectionSummary" class="selection-summary">
@@ -241,6 +318,10 @@ function continueCapture() {
           Reset
         </button>
       </div>
+
+      <div v-if="captureError" class="capture-error">
+        <strong>Error:</strong> {{ captureError }}
+      </div>
     </div>
 
     <ProgressTracker v-if="store.batchState !== 'idle'" />
@@ -279,6 +360,19 @@ function continueCapture() {
 
 .region-confirmed .check {
   font-size: 1rem;
+}
+
+.session-loaded {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  background: #1a2a3a;
+  border: 1px solid #1565c0;
+  border-radius: 4px;
+  color: #90caf9;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .selection-summary {
@@ -379,4 +473,15 @@ function continueCapture() {
 .btn.stop:hover { background: #c62828; }
 .btn.reset { background: #555; }
 .btn.reset:hover { background: #666; }
+
+.capture-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #3a1a1a;
+  border: 1px solid #b71c1c;
+  border-radius: 4px;
+  color: #ef9a9a;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
 </style>

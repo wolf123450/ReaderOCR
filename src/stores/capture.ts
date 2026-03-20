@@ -222,6 +222,11 @@ export const useCaptureStore = defineStore("capture", () => {
     nextCaptureType.value = type;
   }
 
+  /** Restore the pages-captured count from a loaded session (for resume). */
+  function restorePagesCaptured(count: number) {
+    pagesCaptured.value = count;
+  }
+
   return {
     // Window selection
     windows,
@@ -244,6 +249,7 @@ export const useCaptureStore = defineStore("capture", () => {
     effectiveOutputDir,
     setBookName,
     setNextCaptureType,
+    restorePagesCaptured,
     // Batch capture
     batchState,
     batchConfig,

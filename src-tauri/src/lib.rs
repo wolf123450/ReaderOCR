@@ -9,6 +9,7 @@ use capture::windows_api::WindowInfo;
 use capture::region::{CaptureRequest, CaptureResult, PreviewRequest, PreviewResult};
 use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
 use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};
+use capture::session::{SessionData, SessionRegion, read_session, write_session, now_iso8601};
 use keyboard::input::{PageTurnConfig, PageTurnResult};
 use sidecar::client::SidecarClient;
 
@@ -42,93 +43,153 @@ async fn start_batch_capture(
     config: BatchCaptureConfig,
     control: tauri::State<'_, Mutex<BatchControl>>,
     app: tauri::AppHandle,
-) -> Result<Vec<CaptureProgress>, String> {
-    // Reset control for new session
+) -> Result<(), String> {
+    // Reset control for new session and clone the Arc-based handle for the thread.
     let ctrl = {
         let mut guard = control.lock().map_err(|e| format!("Lock error: {e}"))?;
         *guard = BatchControl::new();
         guard.clone()
     };
 
-    // Create output directory
+    // Create output directory before spawning so we can report errors synchronously.
     std::fs::create_dir_all(&config.output_dir)
         .map_err(|e| format!("Failed to create output dir: {e}"))?;
 
-    let delay = std::cmp::max(config.delay_between_ms, 200);
-    let mut results: Vec<CaptureProgress> = Vec::new();
-    let mut page_num: u32 = config.start_page;
+    // Write (or refresh) session file immediately so it exists before capturing.
+    let ts = now_iso8601();
+    let region = SessionRegion {
+        x: config.x,
+        y: config.y,
+        width: config.width,
+        height: config.height,
+    };
+    let existing = read_session(&config.output_dir);
+    let session = SessionData {
+        book_name: config.book_name.clone(),
+        output_dir: config.output_dir.clone(),
+        file_prefix: config.file_prefix.clone(),
+        page_turn_key: config.page_turn_key.clone(),
+        delay_between_ms: config.delay_between_ms,
+        max_pages: config.max_pages,
+        pages_captured: if config.start_page > 1 { config.start_page - 1 } else { 0 },
+        region: region.clone(),
+        created_at: existing.as_ref().map(|s| s.created_at.clone()).unwrap_or_else(|| ts.clone()),
+        updated_at: ts.clone(),
+    };
+    let _ = write_session(&config.output_dir, &session);
 
-    loop {
-        if ctrl.is_stopped() {
-            break;
-        }
+    // Spawn the blocking capture loop on a dedicated thread so the IPC
+    // channel is not blocked and pause/stop commands can be received.
+    tauri::async_runtime::spawn_blocking(move || {
+        let delay = std::cmp::max(config.delay_between_ms, 200);
+        let mut page_num: u32 = config.start_page;
+        let mut pages_done: u32 = if config.start_page > 1 { config.start_page - 1 } else { 0 };
 
-        // Pause loop
-        while ctrl.is_paused() {
+        loop {
             if ctrl.is_stopped() {
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        if ctrl.is_stopped() {
-            break;
-        }
 
-        // Capture
-        let progress = capture_single_page(&config, page_num);
-        let _ = app.emit("capture-progress", &progress);
-        let had_error = progress.status == "error";
-        let current_path = progress.image_path.clone();
-        results.push(progress);
+            while ctrl.is_paused() {
+                if ctrl.is_stopped() { break; }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            if ctrl.is_stopped() {
+                break;
+            }
 
-        if had_error {
-            break;
-        }
+            let progress = capture_single_page(&config, page_num);
+            let _ = app.emit("capture-progress", &progress);
+            let had_error = progress.status == "error";
+            let current_path = progress.image_path.clone();
 
-        // Duplicate detection: compare with previous page
-        if page_num > 1 {
-            let prev_path = format_page_path(&config.output_dir, &config.file_prefix, page_num - 1);
-            let dup_req = DuplicateCheckRequest {
-                image_path_a: prev_path,
-                image_path_b: current_path,
-                threshold: 5,
-            };
-            if let Ok(dup_result) = capture::duplicate::check_duplicate(&dup_req) {
-                if dup_result.is_duplicate {
-                    let _ = app.emit("capture-duplicate-detected", &dup_result);
+            if !had_error {
+                pages_done = page_num;
+                // Update session file after each successful capture.
+                let updated = SessionData {
+                    pages_captured: pages_done,
+                    updated_at: now_iso8601(),
+                    // Preserve original created_at and everything else unchanged.
+                    book_name: config.book_name.clone(),
+                    output_dir: config.output_dir.clone(),
+                    file_prefix: config.file_prefix.clone(),
+                    page_turn_key: config.page_turn_key.clone(),
+                    delay_between_ms: config.delay_between_ms,
+                    max_pages: config.max_pages,
+                    region: region.clone(),
+                    created_at: session.created_at.clone(),
+                };
+                let _ = write_session(&config.output_dir, &updated);
+            }
+
+            if had_error {
+                let _ = app.emit("capture-stopped", serde_json::json!({ "reason": "error" }));
+                break;
+            }
+
+            // Duplicate detection
+            if page_num > 1 {
+                let prev_path = format_page_path(&config.output_dir, &config.file_prefix, page_num - 1);
+                let dup_req = DuplicateCheckRequest {
+                    image_path_a: prev_path,
+                    image_path_b: current_path,
+                    threshold: 5,
+                };
+                if let Ok(dup_result) = capture::duplicate::check_duplicate(&dup_req) {
+                    if dup_result.is_duplicate {
+                        let _ = app.emit("capture-duplicate-detected", &dup_result);
+                        let _ = app.emit("capture-completed", serde_json::json!({ "pages": pages_done }));
+                        break;
+                    }
+                }
+            }
+
+            // Check max pages
+            if let Some(max) = config.max_pages {
+                if page_num >= max {
+                    let _ = app.emit("capture-completed", serde_json::json!({ "pages": pages_done }));
                     break;
                 }
             }
-        }
 
-        // Check max pages
-        if let Some(max) = config.max_pages {
-            if page_num >= max {
+            // Page turn
+            if let Err(e) = turn_page(&config) {
+                let err_progress = CaptureProgress {
+                    page_number: page_num,
+                    total_pages: config.max_pages,
+                    image_path: String::new(),
+                    status: "error".to_string(),
+                    error_message: Some(format!("Page turn failed: {e}")),
+                };
+                let _ = app.emit("capture-progress", &err_progress);
+                let _ = app.emit("capture-stopped", serde_json::json!({ "reason": "page_turn_failed" }));
                 break;
             }
+
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+            page_num += 1;
         }
 
-        // Page turn
-        if let Err(e) = turn_page(&config) {
-            let err_progress = CaptureProgress {
-                page_number: page_num,
-                total_pages: config.max_pages,
-                image_path: String::new(),
-                status: "error".to_string(),
-                error_message: Some(format!("Page turn failed: {e}")),
-            };
-            let _ = app.emit("capture-progress", &err_progress);
-            results.push(err_progress);
-            break;
+        // If we exited the loop normally (ctrl.is_stopped()) without breaking via
+        // duplicate/max-pages, emit stopped so the frontend can react.
+        if ctrl.is_stopped() {
+            let _ = app.emit("capture-stopped", serde_json::json!({ "reason": "user_stopped" }));
         }
+    });
 
-        // Delay
-        std::thread::sleep(std::time::Duration::from_millis(delay));
+    Ok(())
+}
 
-        page_num += 1;
-    }
+#[tauri::command]
+fn load_session(dir: String) -> Option<SessionData> {
+    read_session(&dir)
+}
 
-    Ok(results)
+#[tauri::command]
+fn save_session(dir: String, data: SessionData) -> Result<(), String> {
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create directory: {e}"))?;
+    write_session(&dir, &data)
 }
 
 #[tauri::command]
@@ -217,6 +278,8 @@ pub fn run() {
       pause_batch_capture,
       resume_batch_capture,
       stop_batch_capture,
+      load_session,
+      save_session,
       sidecar_status,
       sidecar_ping
     ])

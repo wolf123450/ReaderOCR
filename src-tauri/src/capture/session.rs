@@ -1,0 +1,193 @@
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+pub const SESSION_FILENAME: &str = "kindleocr-session.json";
+
+/// Serializable capture region stored in the session file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRegion {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Session metadata file written to the capture output directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionData {
+    /// Human-readable book / project title.
+    pub book_name: String,
+    /// Base output directory (parent of the book folder).
+    pub output_dir: String,
+    /// File prefix used for page images.
+    pub file_prefix: String,
+    /// Page-turn key name.
+    pub page_turn_key: String,
+    /// Delay between captures in milliseconds.
+    pub delay_between_ms: u64,
+    /// Maximum pages to capture (null = unlimited).
+    pub max_pages: Option<u32>,
+    /// Number of pages successfully captured so far.
+    pub pages_captured: u32,
+    /// Capture region in screen coordinates.
+    pub region: SessionRegion,
+    /// ISO-8601 timestamp when the session was first created.
+    pub created_at: String,
+    /// ISO-8601 timestamp when the session was last updated.
+    pub updated_at: String,
+}
+
+/// Return the path to the session file inside `dir`.
+pub fn session_path(dir: &str) -> PathBuf {
+    Path::new(dir).join(SESSION_FILENAME)
+}
+
+/// Write (or overwrite) the session file in `dir`.
+pub fn write_session(dir: &str, data: &SessionData) -> Result<(), String> {
+    let path = session_path(dir);
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("Failed to serialize session: {e}"))?;
+    std::fs::write(&path, json).map_err(|e| format!("Failed to write session file: {e}"))
+}
+
+/// Read the session file from `dir`, or return `None` if it doesn't exist / is invalid.
+pub fn read_session(dir: &str) -> Option<SessionData> {
+    let path = session_path(dir);
+    let text = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Return the current UTC time as an ISO-8601 string without external crate dependencies.
+/// Uses a simple, stable format: "2026-01-02T15:04:05Z"
+pub fn now_iso8601() -> String {
+    // We just use a SystemTime-based approach.
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Convert UNIX epoch seconds to a simple ISO date/time string.
+    // We implement this without any external crate.
+    let s = secs;
+    let (y, mo, d, h, mi, sec) = unix_secs_to_datetime(s);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, mi, sec)
+}
+
+/// Minimal UNIX → Gregorian calendar conversion (UTC).
+fn unix_secs_to_datetime(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
+    let sec = secs % 60;
+    let min = (secs / 60) % 60;
+    let hour = (secs / 3600) % 24;
+    let days = secs / 86400; // days since 1970-01-01
+
+    // Gregorian calendar month/day from day count
+    let mut year = 1970u64;
+    let mut remaining = days;
+    loop {
+        let in_year = days_in_year(year);
+        if remaining < in_year {
+            break;
+        }
+        remaining -= in_year;
+        year += 1;
+    }
+    let mut month = 1u64;
+    loop {
+        let in_month = days_in_month(year, month);
+        if remaining < in_month {
+            break;
+        }
+        remaining -= in_month;
+        month += 1;
+    }
+    let day = remaining + 1;
+    (year, month, day, hour, min, sec)
+}
+
+fn is_leap(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_year(year: u64) -> u64 {
+    if is_leap(year) { 366 } else { 365 }
+}
+
+fn days_in_month(year: u64, month: u64) -> u64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => if is_leap(year) { 29 } else { 28 },
+        _ => 30,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn sample_region() -> SessionRegion {
+        SessionRegion { x: 100, y: 200, width: 800, height: 600 }
+    }
+
+    fn sample_session() -> SessionData {
+        SessionData {
+            book_name: "My Book".to_string(),
+            output_dir: "C:\\Books".to_string(),
+            file_prefix: "page".to_string(),
+            page_turn_key: "Right".to_string(),
+            delay_between_ms: 1500,
+            max_pages: None,
+            pages_captured: 0,
+            region: sample_region(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn write_and_read_session() {
+        let dir = TempDir::new().unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+        let data = sample_session();
+        write_session(dir_str, &data).unwrap();
+        let loaded = read_session(dir_str).expect("should be readable");
+        assert_eq!(loaded.book_name, "My Book");
+        assert_eq!(loaded.pages_captured, 0);
+        assert_eq!(loaded.region.width, 800);
+    }
+
+    #[test]
+    fn read_session_missing_file_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+        assert!(read_session(dir_str).is_none());
+    }
+
+    #[test]
+    fn read_session_corrupt_file_returns_none() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(SESSION_FILENAME);
+        fs::write(&path, b"not valid json {{{").unwrap();
+        assert!(read_session(dir.path().to_str().unwrap()).is_none());
+    }
+
+    #[test]
+    fn now_iso8601_produces_valid_format() {
+        let ts = now_iso8601();
+        // e.g. "2026-03-20T14:30:00Z"
+        assert!(ts.ends_with('Z'));
+        assert_eq!(ts.len(), 20);
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[7..8], "-");
+    }
+
+    #[test]
+    fn session_path_appends_filename() {
+        let p = session_path("C:\\Books\\MyBook");
+        assert!(p.ends_with(SESSION_FILENAME));
+    }
+}
