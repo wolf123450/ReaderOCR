@@ -195,8 +195,8 @@ function onDocumentMouseUp() {
     return;
   }
   if (!isDragging.value) return;
-  isDragging.value = false;
   const region = drawingRegion.value;
+  isDragging.value = false;
   if (region && region.width > 10 && region.height > 10 && store.selectedWindow) {
     const win = store.selectedWindow;
     store.setRegion({

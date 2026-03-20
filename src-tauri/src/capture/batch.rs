@@ -25,6 +25,8 @@ pub struct BatchCaptureConfig {
     pub page_turn_key: String,
     #[serde(default = "default_start_page")]
     pub start_page: u32,
+    #[serde(default)]
+    pub book_name: String,
 }
 
 fn default_start_page() -> u32 {
@@ -32,6 +34,7 @@ fn default_start_page() -> u32 {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureProgress {
     pub page_number: u32,
     pub total_pages: Option<u32>,
@@ -178,6 +181,7 @@ mod tests {
             file_prefix: "test".to_string(),
             page_turn_key: "Right".to_string(),
             start_page: 1,
+            book_name: String::new(),
         };
 
         let progress = capture_single_page(&config, 1);

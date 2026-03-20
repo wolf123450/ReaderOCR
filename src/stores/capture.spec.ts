@@ -379,4 +379,21 @@ describe("project settings", () => {
     store.setNextCaptureType("illustration");
     expect(store.nextCaptureType).toBe("illustration");
   });
+
+  it("restorePagesCaptured sets the pagesCaptured count", () => {
+    const store = useCaptureStore();
+    expect(store.pagesCaptured).toBe(0);
+    store.restorePagesCaptured(42);
+    expect(store.pagesCaptured).toBe(42);
+  });
+
+  it("restorePagesCaptured is overwritten on reset", () => {
+    const store = useCaptureStore();
+    store.restorePagesCaptured(10);
+    // Simulate a full session: idle → capturing → idle
+    store.transitionTo("capturing");
+    store.transitionTo("stopped");
+    store.transitionTo("idle");
+    expect(store.pagesCaptured).toBe(0);
+  });
 });
