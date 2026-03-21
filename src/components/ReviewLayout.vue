@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useUiStore, type ReviewSubtab } from "@/stores/ui";
 import { useCaptureStore } from "@/stores/capture";
+import FilmstripSidebar from "@/components/FilmstripSidebar.vue";
 
 const ui = useUiStore();
 const capture = useCaptureStore();
@@ -18,6 +19,11 @@ function subtabTitle(id: ReviewSubtab): string {
   if (id === "edit" && !ui.isSubtabEnabled("edit")) return "Run OCR on at least one page to unlock";
   return "";
 }
+
+const emit = defineEmits<{
+  (e: "insertBefore", index: number): void;
+  (e: "insertAfter", index: number): void;
+}>();
 </script>
 
 <template>
@@ -41,18 +47,10 @@ function subtabTitle(id: ReviewSubtab): string {
     <!-- Main area: filmstrip + content -->
     <div class="review-body">
       <!-- Filmstrip sidebar -->
-      <aside class="filmstrip-sidebar">
-        <div class="filmstrip-list">
-          <div
-            v-for="(page, idx) in capture.capturedPages"
-            :key="page.pageNumber"
-            :class="['filmstrip-thumb', { selected: ui.selectedPageIndex === idx }]"
-            @click="ui.selectPage(idx)"
-          >
-            <div class="thumb-number">{{ page.pageNumber }}</div>
-          </div>
-        </div>
-      </aside>
+      <FilmstripSidebar
+        @insert-before="(idx) => emit('insertBefore', idx)"
+        @insert-after="(idx) => emit('insertAfter', idx)"
+      />
 
       <!-- Content area driven by active subtab -->
       <main class="subtab-content">
@@ -107,46 +105,6 @@ function subtabTitle(id: ReviewSubtab): string {
   display: flex;
   flex: 1;
   overflow: hidden;
-}
-
-.filmstrip-sidebar {
-  width: 90px;
-  min-width: 60px;
-  border-right: 1px solid var(--border-color, #444);
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-.filmstrip-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px;
-}
-
-.filmstrip-thumb {
-  height: 60px;
-  border-radius: 3px;
-  border: 2px solid transparent;
-  background: var(--thumb-bg, #2a2a2a);
-  cursor: pointer;
-  display: flex;
-  align-items: flex-end;
-  padding: 2px;
-  transition: border-color 0.1s;
-}
-
-.filmstrip-thumb:hover {
-  border-color: var(--accent-dim, #2a6ab0);
-}
-
-.filmstrip-thumb.selected {
-  border-color: var(--accent, #4a9eff);
-}
-
-.thumb-number {
-  font-size: 0.65rem;
-  color: var(--text-muted, #aaa);
 }
 
 .subtab-content {
