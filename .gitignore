@@ -46,3 +46,6 @@ logs/
 *.exe
 *.msi
 *.nsis
+
+*.md.bak
+ChapterOne.md

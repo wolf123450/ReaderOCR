@@ -209,21 +209,22 @@ def _handle_build_epub(params: Dict[str, Any]) -> Dict[str, Any]:
     for p_raw in params.get("pages", []):
         blocks: list[TextBlock] = []
         for b_raw in p_raw.get("blocks", []):
-            bbox_raw = b_raw.get("bbox", {})
+            bbox_raw = b_raw.get("bbox") or {}
             blocks.append(TextBlock(
-                type=b_raw["type"],
-                text=b_raw["text"],
-                confidence=float(b_raw.get("confidence", 1.0)),
+                type=b_raw.get("type", "body"),
+                text=b_raw.get("text", ""),
+                confidence=float(b_raw.get("confidence") or 1.0),
                 bbox=BoundingBox(
-                    x=float(bbox_raw.get("x", 0)),
-                    y=float(bbox_raw.get("y", 0)),
-                    width=float(bbox_raw.get("width", 0)),
-                    height=float(bbox_raw.get("height", 0)),
+                    x=float(bbox_raw.get("x") or 0),
+                    y=float(bbox_raw.get("y") or 0),
+                    width=float(bbox_raw.get("width") or 0),
+                    height=float(bbox_raw.get("height") or 0),
                 ),
-                col_index=int(b_raw.get("col_index", 0)),
+                col_index=int(b_raw.get("col_index") or 0),
             ))
+        raw_page_index = p_raw.get("page_index")
         pages.append(OcrPageResult(
-            page_index=int(p_raw["page_index"]),
+            page_index=int(raw_page_index) if raw_page_index is not None else 0,
             blocks=blocks,
             raw_text=p_raw.get("raw_text", ""),
             avg_confidence=float(p_raw.get("avg_confidence", 1.0)),

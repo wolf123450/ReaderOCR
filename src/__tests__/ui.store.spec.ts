@@ -44,7 +44,7 @@ describe("ui store — Step 39", () => {
     const capture = useCaptureStore();
     capture.capturedPages.push(makePage(1));
     expect(ui.isSubtabEnabled("review")).toBe(false);
-    expect(ui.isSubtabEnabled("edit")).toBe(false);
+    expect(ui.isSubtabEnabled("edit")).toBe(true); // Edit (chapter structure) available with captured pages
     expect(ui.isTabEnabled("export")).toBe(false);
   });
 

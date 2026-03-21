@@ -173,7 +173,14 @@ def build_epub(params: EpubBuildParams) -> EpubBuildResult:
     epub_chapters: List[epub.EpubHtml] = []
     toc_entries: List[epub.Link] = []
 
-    if params.chapters:
+    # Only use chapters mode when at least one chapter has assigned source pages.
+    # If chapters are defined but all have empty sources, fall through to
+    # single-chapter mode so we still produce a usable EPUB.
+    has_chapter_content = bool(params.chapters) and any(
+        ch.get("sources") for ch in params.chapters  # type: ignore[union-attr]
+    )
+
+    if has_chapter_content:
         content_entries = map_chapters(params.chapters)
 
         # Group entries by chapter index
@@ -228,7 +235,7 @@ def build_epub(params: EpubBuildParams) -> EpubBuildResult:
             toc_entries.append(epub.Link(chapter_file, chapter_title, f"chapter_{ch_idx}"))
 
     else:
-        # No chapters defined → single chapter with all pages
+        # No chapters, or chapters with no page sources → single chapter
         all_pages = sorted(params.pages, key=lambda p: p.page_index)
         all_blocks: List[TextBlock] = []
         for p in all_pages:

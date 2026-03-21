@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useChaptersStore, type ChapterSegment, type ChapterType } from "@/stores/chapters";
+import { useUiStore } from "@/stores/ui";
+import { useCaptureStore } from "@/stores/capture";
 
 const props = defineProps<{ chapter: ChapterSegment }>();
 
 const chapters = useChaptersStore();
+const ui = useUiStore();
+const capture = useCaptureStore();
 
 const editing = ref(false);
 const expanded = ref(false);
@@ -26,6 +30,33 @@ const pageRangeLabel = computed(() => {
   const max = Math.max(...indices);
   return min === max ? `p.${min + 1}` : `p.${min + 1}–${max + 1}`;
 });
+
+/** Page number label for a source entry, using captured-page data when available. */
+function pageLabel(pageIndex: number): string {
+  const page = capture.capturedPages[pageIndex];
+  return page ? `Page ${page.pageNumber}` : `Page ${pageIndex + 1}`;
+}
+
+/** Currently selected page index (from filmstrip selection). */
+const selectedIdx = computed(() => ui.selectedPageIndex);
+
+/** True if the selected page is already in THIS chapter. */
+const selectedInThisChapter = computed(() =>
+  selectedIdx.value !== null &&
+  props.chapter.sources.some((s) => s.pageIndex === selectedIdx.value)
+);
+
+/** The chapter that currently owns the selected page (may be a different chapter). */
+const selectedPageChapter = computed(() => {
+  if (selectedIdx.value === null) return null;
+  return chapters.getChapterForPage(selectedIdx.value);
+});
+
+/** True if the selected page is assigned to a different chapter (will be moved). */
+const willMoveFromOtherChapter = computed(() =>
+  selectedPageChapter.value !== null &&
+  selectedPageChapter.value.id !== props.chapter.id
+);
 
 function startEdit() {
   editTitle.value = props.chapter.title;
@@ -49,6 +80,15 @@ function onTypeChange(e: Event) {
   chapters.updateChapter(props.chapter.id, {
     chapterType: (e.target as HTMLSelectElement).value as ChapterType,
   });
+}
+
+function addSelectedPage() {
+  if (selectedIdx.value === null) return;
+  chapters.assignPageToChapter(props.chapter.id, selectedIdx.value);
+}
+
+function removePage(pageIndex: number) {
+  chapters.removePageFromChapter(props.chapter.id, pageIndex);
 }
 </script>
 
@@ -85,16 +125,36 @@ function onTypeChange(e: Event) {
     </div>
 
     <div v-if="expanded" class="chapter-detail">
-      <p class="detail-hint">Pages in this chapter (drag from filmstrip to add/remove):</p>
+      <!-- Assigned pages list -->
       <ul class="source-list">
-        <li v-for="(src, i) in chapter.sources" :key="i">
-          Page {{ src.pageIndex + 1 }}
+        <li
+          v-for="(src, i) in chapter.sources"
+          :key="i"
+          class="source-entry"
+        >
+          <span>{{ pageLabel(src.pageIndex) }}</span>
           <span v-if="src.start !== 0 || src.end !== 1.0" class="fraction">
             [{{ (src.start * 100).toFixed(0) }}%–{{ (src.end * 100).toFixed(0) }}%]
           </span>
+          <button class="remove-page-btn" title="Remove from chapter" @click="removePage(src.pageIndex)">✕</button>
         </li>
         <li v-if="chapter.sources.length === 0" class="empty-sources">No pages assigned yet.</li>
       </ul>
+
+      <!-- Add currently selected filmstrip page -->
+      <div class="add-page-row">
+        <button
+          class="add-page-btn"
+          :disabled="selectedIdx === null || selectedInThisChapter"
+          :title="selectedIdx === null ? 'Select a page in the filmstrip first' : selectedInThisChapter ? 'This page is already in this chapter' : 'Add selected page'"
+          @click="addSelectedPage"
+        >
+          + Add {{ selectedIdx !== null ? pageLabel(selectedIdx) : 'selected page' }}
+        </button>
+        <span v-if="willMoveFromOtherChapter" class="move-warn">
+          Will move from "{{ selectedPageChapter!.title }}"
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -195,4 +255,57 @@ function onTypeChange(e: Event) {
 
 .fraction { color: #ffb400; margin-left: 0.3rem; }
 .empty-sources { color: #666; font-style: italic; }
+
+.source-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 0;
+}
+
+.remove-page-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0 3px;
+  line-height: 1;
+}
+
+.remove-page-btn:hover { color: #f87171; }
+
+.add-page-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #2a2a2a;
+}
+
+.add-page-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 4px;
+  color: #4a9eff;
+  cursor: pointer;
+}
+
+.add-page-btn:hover:not(:disabled) {
+  background: rgba(74, 158, 255, 0.2);
+}
+
+.add-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.move-warn {
+  font-size: 0.72rem;
+  color: #f59e0b;
+}
 </style>
