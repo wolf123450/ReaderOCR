@@ -18,26 +18,26 @@ Build the OCR subtab UI: an "auto-OCR after capture" toggle, a single-page test-
 │  ──────────────────────────────────────────────────────────      │i│
 │  ☑ Auto-OCR new pages after capture                              │l│
 │                                                                  │m│
-│  Engine: [PaddleOCR PP-OCRv5 ▼]                                 │s│
-│  Language: [English ▼]                                          │t│
+│  Engine: [PaddleOCR PP-OCRv5 ▼]                                  │s│
+│  Language: [English ▼]                                           │t│
 │                                                                  │r│
 │  ──────────────────────────────────────────────────────────      │i│
 │  Test Run                                                        │p│
 │  Run OCR on the selected page before committing to full batch.   │ │
-│  [🔬 Test OCR on page 3]                                        │ │
+│  [ Test OCR on page 3]                                           │ │
 │                                                                  │ │
 │  ──────────────────────────────────────────────────────────      │ │
-│  Batch OCR                              Progress: 12 / 47  26%  │ │
-│  [▶ Run OCR — All Pages]   [⏸ Pause]   [⏹ Stop]               │ │
+│  Batch OCR                               Progress: 12 / 47  26%  │ │
+│  [Run OCR — All Pages]     [Pause]   [Stop]                      │ │
 │                                                                  │ │
-│  ████████████░░░░░░░░░░░░░░░░░░  12 / 47                       │ │
+│  ████████████░░░░░░░░░░░░░░░░░░  12 / 47                         │ │
 │                                                                  │ │
-│  Recent results:                                                │ │
-│  ✅ p.1 — 94.2% confidence                                     │ │
-│  ✅ p.2 — 97.8% confidence                                     │ │
-│  ⚠  p.3 — 71.5% confidence  (low — review recommended)        │ │
-│  ⏳ p.4 — running…                                             │ │
-└────────────────────────────────────────────────────────────────┴─┘
+│  Recent results:                                                 │ │
+│  ☑ p.1 — 94.2% confidence                                        │ │
+│  ☑ p.2 — 97.8% confidence                                        │ │
+│  ⚠ p.3 — 71.5% confidence  (low — review recommended)            │ │
+│    p.4 — running…                                                │ │
+└──────────────────────────────────────────────────────────────────┴─┘
 ```
 
 ## Auto-OCR After Capture

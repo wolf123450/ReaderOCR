@@ -73,14 +73,14 @@ The chapter editor lives in the Export tab (and optionally as a panel in the Pag
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Chapter Structure                          [+ Add Chapter] [Auto ↺] │
 ├──────────────────────────────────────────────────────────────────────┤
-│  ≡ Front Matter         p.1–2       [✎] [🗑]                        │
-│  ≡ Chapter 1: "Intro"   p.3–14      [✎] [🗑]                        │
-│  ≡ Chapter 2: "Part I"  p.15–41     [✎] [🗑] ← drag to reorder      │
-│  ≡ Chapter 3: "Part II" p.42–60     [✎] [🗑]                        │
-│  ≡ Back Matter          p.61–62     [✎] [🗑]                        │
+│  ≡ Front Matter         p.1–2       [edit] [delete]                  │
+│  ≡ Chapter 1: "Intro"   p.3–14      [edit] [delete]                  │
+│  ≡ Chapter 2: "Part I"  p.15–41     [edit] [delete] ← drag to reorder│
+│  ≡ Chapter 3: "Part II" p.42–60     [edit] [delete]                  │
+│  ≡ Back Matter          p.61–62     [edit] [delete]                  │
 │                                                                      │
-│  ─── Page Split View (when editing a chapter boundary) ───────────  │
-│  Drag the split line on the thumbnail to adjust where ch.2 ends     │
+│  ─── Page Split View (when editing a chapter boundary) ───────────   │
+│  Drag the split line on the thumbnail to adjust where ch.2 ends      │
 │  and ch.3 begins on page 41.                                         │
 │                                                                      │
 │  [Page 41 thumbnail — draggable horizontal split line at 45%]        │
@@ -91,7 +91,7 @@ The chapter editor lives in the Export tab (and optionally as a panel in the Pag
 
 - **Drag chapter row** → reorder chapters in EPUB output (does not affect source page order)
 - **Click title** → inline rename
-- **[✎] Edit** → expand detail pane for this chapter; shows its page list; drag pages in/out
+- **[edit] Edit** → expand detail pane for this chapter; shows its page list; drag pages in/out
 - **[+ Add Chapter]** → creates a new chapter from the currently selected page range in the filmstrip, or at the end
 - **[Auto ↺]** → re-run chapter auto-detection (step 22); merge with existing manual boundaries (user confirms each suggestion)
 - **Page split handle** → drag to adjust `start`/`end` fraction for pages shared between chapters; preview shows split point overlay on thumbnail

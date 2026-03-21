@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import CaptureView from "@/views/CaptureView.vue";
+import TabShell from "@/components/TabShell.vue";
 </script>
 
 <template>
-  <div class="app-shell">
-    <header class="app-header">
-      <h1>KindleOCR</h1>
-    </header>
-    <main>
-      <CaptureView />
-    </main>
-  </div>
+  <TabShell />
 </template>
 
 <style>
@@ -19,6 +12,14 @@ import CaptureView from "@/views/CaptureView.vue";
   font-size: 16px;
   color: #0f0f0f;
   background-color: #f6f6f6;
+
+  --border-color: #444;
+  --nav-bg: #1a1a1a;
+  --text-primary: #f0f0f0;
+  --text-muted: #aaa;
+  --accent: #4a9eff;
+  --accent-dim: #2a6ab0;
+  --thumb-bg: #2a2a2a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -28,21 +29,11 @@ import CaptureView from "@/views/CaptureView.vue";
   }
 }
 
-.app-shell {
-  min-height: 100vh;
+* {
+  box-sizing: border-box;
 }
 
-.app-header {
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #444;
-}
-
-.app-header h1 {
+body {
   margin: 0;
-  font-size: 1.2rem;
-}
-
-main {
-  padding: 0;
 }
 </style>
