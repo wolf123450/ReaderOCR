@@ -2,7 +2,6 @@
 import { ref, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import ChapterEditor from "@/components/ChapterEditor.vue";
 import MetadataForm from "@/components/MetadataForm.vue";
 import { useMetadataStore } from "@/stores/metadata";
 import { useOcrStore } from "@/stores/ocr";
@@ -146,7 +145,24 @@ async function buildEpub() {
 
         <div class="divider" />
 
-        <ChapterEditor />
+        <!-- Chapter summary — managed in Pages/Review → Edit -->
+        <div class="chapter-summary">
+          <div class="chapter-summary-header">
+            <span>Chapter Structure</span>
+            <span class="summary-count">{{ chaptersStore.chapters.length }} chapter(s)</span>
+          </div>
+          <p v-if="chaptersStore.chapters.length === 0" class="summary-hint">
+            No chapters defined. Use <strong>Pages/Review → Edit</strong> to assign pages to chapters.
+            Without chapters, all OCR’d pages will be exported as a single chapter.
+          </p>
+          <ul v-else class="summary-list">
+            <li v-for="ch in chaptersStore.sortedChapters" :key="ch.id">
+              <span class="summary-title">{{ ch.title }}</span>
+              <span class="summary-pages">{{ ch.sources.length }} page(s)</span>
+            </li>
+          </ul>
+          <p class="summary-edit-hint">Edit chapters in <strong>Pages/Review → Edit</strong>.</p>
+        </div>
       </div>
 
       <!-- Right column: build action -->
@@ -244,6 +260,73 @@ async function buildEpub() {
 
 .divider {
   border-top: 1px solid var(--color-border, #333);
+}
+
+/* Chapter summary */
+.chapter-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chapter-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-heading, #ccc);
+}
+
+.summary-count {
+  font-size: 0.78rem;
+  font-weight: normal;
+  color: var(--color-text-muted, #888);
+}
+
+.summary-hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #999);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.summary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  padding: 2px 0;
+}
+
+.summary-title {
+  color: var(--color-text, #eee);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-pages {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #888);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.summary-edit-hint {
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #666);
+  margin: 0;
+  font-style: italic;
 }
 
 /* Right pane */

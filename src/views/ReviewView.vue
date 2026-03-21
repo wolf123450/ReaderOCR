@@ -5,6 +5,7 @@ import ReviewLayout from "@/components/ReviewLayout.vue";
 import PageDetailPane from "@/components/PageDetailPane.vue";
 import InsertPageDialog from "@/components/InsertPageDialog.vue";
 import OcrSubtab from "@/views/OcrSubtab.vue";
+import ChapterEditor from "@/components/ChapterEditor.vue";
 
 const ui = useUiStore();
 
@@ -37,9 +38,7 @@ function openInsertAfter(index: number) {
       <div v-else-if="subtab === 'review'" class="subtab-stub">
         <p>Side-by-side review (step 24/25)</p>
       </div>
-      <div v-else-if="subtab === 'edit'" class="subtab-stub">
-        <p>Batch text editing (step 27)</p>
-      </div>
+      <ChapterEditor v-else-if="subtab === 'edit'" />
     </template>
   </ReviewLayout>
 

@@ -3,9 +3,11 @@ import { computed } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCaptureStore, type PageType } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
+import { useChaptersStore } from "@/stores/chapters";
 
 const capture = useCaptureStore();
 const ui = useUiStore();
+const chaptersStore = useChaptersStore();
 
 const PAGE_TYPES: { value: PageType; label: string }[] = [
   { value: "text", label: "Text" },
@@ -60,6 +62,28 @@ function statusLabel(s: string): string {
   if (s === "placeholder") return "◻ placeholder";
   return s;
 }
+
+// ── Chapter assignment ───────────────────────────────────────
+
+/** 0-based page index for the selected page (same key used in chapter sources). */
+const pageIndex = computed(() => selectedIndex.value);
+
+/** ID of the chapter currently containing this page, or empty string. */
+const pageChapterId = computed(() => {
+  if (pageIndex.value === null) return "";
+  return chaptersStore.getChapterForPage(pageIndex.value)?.id ?? "";
+});
+
+function onChapterChange(e: Event) {
+  if (pageIndex.value === null) return;
+  const chapterId = (e.target as HTMLSelectElement).value;
+  if (chapterId === "") {
+    const current = chaptersStore.getChapterForPage(pageIndex.value);
+    if (current) chaptersStore.removePageFromChapter(current.id, pageIndex.value);
+  } else {
+    chaptersStore.assignPageToChapter(chapterId, pageIndex.value);
+  }
+}
 </script>
 
 <template>
@@ -97,6 +121,19 @@ function statusLabel(s: string): string {
         </label>
         <span class="meta-status">Status: {{ statusLabel(page.captureStatus) }}</span>
         <span class="meta-ocr">OCR: {{ page.ocrStatus }}</span>
+      </div>
+
+      <!-- Chapter assignment (only shown when chapters exist) -->
+      <div v-if="chaptersStore.chapters.length > 0" class="meta-row">
+        <label class="meta-label">
+          Chapter:
+          <select :value="pageChapterId" @change="onChapterChange" class="type-select">
+            <option value="">— Not assigned —</option>
+            <option v-for="ch in chaptersStore.sortedChapters" :key="ch.id" :value="ch.id">
+              {{ ch.title }}
+            </option>
+          </select>
+        </label>
       </div>
     </div>
 

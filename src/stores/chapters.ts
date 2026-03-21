@@ -76,6 +76,41 @@ export const useChaptersStore = defineStore("chapters", () => {
     chapters.value.forEach((ch, i) => (ch.chapterIndex = i));
   }
 
+  // ── Page ↔ Chapter assignment ─────────────────────────────────────
+
+  /**
+   * Assign a page to a chapter.  The page is automatically removed from any
+   * other chapter it currently belongs to (each page belongs to at most one
+   * chapter), then appended to the target chapter's sources.
+   */
+  function assignPageToChapter(chapterId: string, pageIndex: number): void {
+    // Remove from any chapter that currently owns this page
+    for (const ch of chapters.value) {
+      const idx = ch.sources.findIndex((s) => s.pageIndex === pageIndex);
+      if (idx !== -1) ch.sources.splice(idx, 1);
+    }
+    // Add to the target chapter
+    const ch = chapters.value.find((c) => c.id === chapterId);
+    if (!ch) return;
+    if (!ch.sources.find((s) => s.pageIndex === pageIndex)) {
+      ch.sources.push({ pageIndex, start: 0.0, end: 1.0 });
+      ch.sources.sort((a, b) => a.pageIndex - b.pageIndex);
+    }
+  }
+
+  /** Remove a specific page from a chapter's sources. */
+  function removePageFromChapter(chapterId: string, pageIndex: number): void {
+    const ch = chapters.value.find((c) => c.id === chapterId);
+    if (!ch) return;
+    const idx = ch.sources.findIndex((s) => s.pageIndex === pageIndex);
+    if (idx !== -1) ch.sources.splice(idx, 1);
+  }
+
+  /** Return the chapter that contains the given page index, or null. */
+  function getChapterForPage(pageIndex: number): ChapterSegment | null {
+    return chapters.value.find((ch) => ch.sources.some((s) => s.pageIndex === pageIndex)) ?? null;
+  }
+
   // ── Validation ────────────────────────────────────────────────────
 
   function getValidationErrors(): string[] {
@@ -144,6 +179,9 @@ export const useChaptersStore = defineStore("chapters", () => {
     removeChapter,
     updateChapter,
     reorderChapters,
+    assignPageToChapter,
+    removePageFromChapter,
+    getChapterForPage,
     getValidationErrors,
     isValid,
     serialize,

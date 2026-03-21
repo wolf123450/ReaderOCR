@@ -31,7 +31,7 @@ export const useUiStore = defineStore("ui", () => {
     if (sub === "pages") return pageCount > 0;
     if (sub === "ocr") return pageCount > 0;
     if (sub === "review") return ocrPageCount.value > 0;
-    if (sub === "edit") return ocrPageCount.value > 0;
+    if (sub === "edit") return pageCount > 0;
     return false;
   }
 

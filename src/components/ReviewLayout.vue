@@ -13,7 +13,7 @@ const subtabs: { id: ReviewSubtab; label: string }[] = [
 
 function subtabTitle(id: ReviewSubtab): string {
   if (id === "review" && !ui.isSubtabEnabled("review")) return "Run OCR on at least one page to unlock";
-  if (id === "edit" && !ui.isSubtabEnabled("edit")) return "Run OCR on at least one page to unlock";
+  if (id === "edit" && !ui.isSubtabEnabled("edit")) return "Capture at least one page to unlock";
   return "";
 }
 
