@@ -17,7 +17,7 @@ const selectedPage = computed(() =>
 
 const ocrEngines = [
   { value: "paddleocr-pp-ocrv5", label: "PaddleOCR PP-OCRv5" },
-  { value: "tesseract", label: "Tesseract 5" },
+  // Tesseract is not yet implemented — add back once the sidecar engine is wired up
 ];
 
 const languages = [
@@ -91,7 +91,7 @@ function runTestOcr() {
             <span v-if="ocr.testRunResult.confidence < 80" class="low-conf">(low)</span>
           </span>
         </div>
-        <pre v-if="ocr.testRunResult.text" class="result-text">{{ ocr.testRunResult.text.slice(0, 400) }}…</pre>
+        <pre v-if="ocr.testRunResult.text" class="result-text">{{ ocr.testRunResult.text }}</pre>
       </div>
     </section>
 

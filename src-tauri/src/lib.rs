@@ -290,27 +290,33 @@ struct OcrPageResponse {
 }
 
 #[tauri::command]
-#[allow(unused_variables)]
-fn ocr_page(
+async fn ocr_page(
     image_path: String,
     page_number: u32,
     engine: String,
     language: String,
     client: tauri::State<'_, Mutex<SidecarClient>>,
 ) -> Result<OcrPageResponse, String> {
-    let guard = client.lock().map_err(|e| e.to_string())?;
-    let result: SidecarOcrResult = guard.call(
-        "ocr_page",
-        serde_json::json!({
-            "image_path": image_path,
-            "engine": engine,
-            "page_index": page_number.saturating_sub(1),
-        }),
-    )?;
-    Ok(OcrPageResponse {
-        page_number,
-        text: result.raw_text,
-        confidence: (result.avg_confidence * 100.0).round(),
+    // block_in_place tells the tokio runtime that this thread is about to do
+    // long-running blocking IO (PaddleOCR inference, ~10 s).  Tokio compensates
+    // by spawning another thread so the rest of the async runtime — including
+    // IPC, window events, and UI updates — stays responsive.
+    tokio::task::block_in_place(|| {
+        let guard = client.lock().map_err(|e| e.to_string())?;
+        let result: SidecarOcrResult = guard.call(
+            "ocr_page",
+            serde_json::json!({
+                "image_path": image_path,
+                "engine": engine,
+                "language": language,
+                "page_index": page_number.saturating_sub(1),
+            }),
+        )?;
+        Ok(OcrPageResponse {
+            page_number,
+            text: result.raw_text,
+            confidence: (result.avg_confidence * 100.0).round(),
+        })
     })
 }
 
