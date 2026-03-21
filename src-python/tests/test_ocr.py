@@ -169,7 +169,7 @@ class TestPaddleOcrModule:
     def test_reading_order_sorted_top_to_bottom(self):
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
-        # Out-of-order y coordinates
+        # Out-of-order y coordinates, single column
         raw = [
             {
                 "rec_texts": ["Third", "First", "Second"],
@@ -190,6 +190,44 @@ class TestPaddleOcrModule:
 
         texts = [b.text for b in result.blocks]
         assert texts == ["First", "Second", "Third"]
+
+    def test_reading_order_two_column_layout(self):
+        """Left column should come entirely before right column."""
+        from kindleocr.ocr.paddle_ocr import ocr_page_paddle
+
+        # Two columns, 400 px wide each, with a 200 px gap.
+        # Left col x=0..400, right col x=600..1000.
+        # Deliberately interleaved y-order so a flat y-sort would get it wrong.
+        raw = [
+            {
+                "rec_texts": [
+                    "R-top",    # right col, y=50
+                    "L-mid",    # left col,  y=200
+                    "L-top",    # left col,  y=50
+                    "R-bot",    # right col, y=300
+                    "L-bot",    # left col,  y=300
+                    "R-mid",    # right col, y=200
+                ],
+                "rec_scores": [0.9] * 6,
+                "rec_polys": [
+                    [[600, 50],  [1000, 50],  [1000, 90],  [600, 90]],
+                    [[0,   200], [400,  200], [400,  240], [0,   240]],
+                    [[0,   50],  [400,  50],  [400,  90],  [0,   90]],
+                    [[600, 300], [1000, 300], [1000, 340], [600, 340]],
+                    [[0,   300], [400,  300], [400,  340], [0,   340]],
+                    [[600, 200], [1000, 200], [1000, 240], [600, 240]],
+                ],
+            }
+        ]
+        mock_ocr = MagicMock()
+        mock_ocr.predict.return_value = raw
+
+        with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
+            result = ocr_page_paddle(OcrProcessPageParams(image_path="/fake/img.png"))
+
+        texts = [b.text for b in result.blocks]
+        assert texts == ["L-top", "L-mid", "L-bot", "R-top", "R-mid", "R-bot"], \
+            f"Expected left-col-first order, got: {texts}"
 
     def test_empty_image_returns_empty_result(self):
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
