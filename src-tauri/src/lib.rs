@@ -268,6 +268,52 @@ fn scan_session_dir(output_dir: String, file_prefix: String) -> DiskScanResult {
     capture::reconcile::scan_session_dir(&output_dir, &file_prefix)
 }
 
+// ---------------------------------------------------------------------------
+// OCR command — proxied to the Python sidecar via JSON-RPC
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct SidecarOcrResult {
+    #[allow(dead_code)]
+    page_index: u32,
+    #[allow(dead_code)]
+    blocks: Vec<serde_json::Value>,
+    raw_text: String,
+    avg_confidence: f64,
+}
+
+#[derive(serde::Serialize)]
+struct OcrPageResponse {
+    page_number: u32,
+    text: String,
+    confidence: f64,
+}
+
+#[tauri::command]
+#[allow(unused_variables)]
+fn ocr_page(
+    image_path: String,
+    page_number: u32,
+    engine: String,
+    language: String,
+    client: tauri::State<'_, Mutex<SidecarClient>>,
+) -> Result<OcrPageResponse, String> {
+    let guard = client.lock().map_err(|e| e.to_string())?;
+    let result: SidecarOcrResult = guard.call(
+        "ocr_page",
+        serde_json::json!({
+            "image_path": image_path,
+            "engine": engine,
+            "page_index": page_number.saturating_sub(1),
+        }),
+    )?;
+    Ok(OcrPageResponse {
+        page_number,
+        text: result.raw_text,
+        confidence: (result.avg_confidence * 100.0).round(),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -325,7 +371,8 @@ pub fn run() {
       save_session,
       scan_session_dir,
       sidecar_status,
-      sidecar_ping
+      sidecar_ping,
+      ocr_page
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

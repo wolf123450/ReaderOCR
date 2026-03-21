@@ -8,6 +8,9 @@
             "approve": true,
             "matchCommandLine": true
         },
-        "npm run test:unit": true
+        "npm run test:unit": true,
+        "cargo build": true,
+        "npx vue-tsc": true,
+        "git -C \"D:\\Projects\\KindleOCR\"": true
     }
 }
