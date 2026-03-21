@@ -278,6 +278,32 @@ class TestOcrServerHandler:
 
 
 # ---------------------------------------------------------------------------
+# Smoke test: fail loudly if paddleocr is not installed (not just skip)
+# ---------------------------------------------------------------------------
+
+class TestPaddleOcrInstalled:
+    """Ensure the paddleocr package is present in the environment.
+
+    This test is intentionally NOT using importorskip so that a missing
+    package causes an explicit FAILED rather than a silent SKIPPED.
+    """
+
+    def test_paddleocr_importable(self):
+        """paddleocr must be installed — add it with: pip install paddleocr paddlepaddle"""
+        import importlib
+        assert importlib.util.find_spec("paddleocr") is not None, (
+            "paddleocr is not installed. Run: pip install paddleocr paddlepaddle"
+        )
+
+    def test_paddlepaddle_importable(self):
+        """paddlepaddle must be installed — add it with: pip install paddlepaddle"""
+        import importlib
+        assert importlib.util.find_spec("paddle") is not None, (
+            "paddlepaddle is not installed. Run: pip install paddlepaddle"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Live PaddleOCR accuracy test (skipped when not installed)
 # ---------------------------------------------------------------------------
 
