@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCaptureStore } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
 import { useSettingsStore } from "@/stores/settings";
@@ -34,6 +35,21 @@ function runTestOcr() {
   if (ui.selectedPageIndex !== null) {
     ocr.runTestOcr(ui.selectedPageIndex);
   }
+}
+
+// --- Debug overlay ---
+const showDebug = ref(false);
+const debugImgSize = ref({ w: 0, h: 0 });
+
+function onDebugImgLoad(e: Event) {
+  const img = e.target as HTMLImageElement;
+  debugImgSize.value = { w: img.naturalWidth, h: img.naturalHeight };
+}
+
+// Distinct colours for up to 6 columns; wraps after that.
+const COL_COLOURS = ["#ff4444", "#4488ff", "#33cc55", "#ff8800", "#cc44ff", "#00cccc"];
+function colColour(colIndex: number): string {
+  return COL_COLOURS[colIndex % COL_COLOURS.length];
 }
 </script>
 
@@ -90,8 +106,92 @@ function runTestOcr() {
             ✓ Confidence: {{ ocr.testRunResult.confidence.toFixed(1) }}%
             <span v-if="ocr.testRunResult.confidence < 80" class="low-conf">(low)</span>
           </span>
+          <label class="debug-toggle" v-if="!ocr.testRunResult.errorMessage">
+            <input type="checkbox" v-model="showDebug" />
+            Debug view
+          </label>
         </div>
-        <pre v-if="ocr.testRunResult.text" class="result-text">{{ ocr.testRunResult.text }}</pre>
+
+        <!-- Debug mode: bounding box overlay + block table -->
+        <div v-if="showDebug && ocr.testRunResult.blocks?.length && selectedPage" class="debug-view">
+          <!-- Image with SVG overlay -->
+          <div class="debug-img-wrap">
+            <img
+              :src="convertFileSrc(selectedPage.imagePath)"
+              class="debug-img"
+              @load="onDebugImgLoad"
+            />
+            <svg
+              v-if="debugImgSize.w > 0"
+              :viewBox="`0 0 ${debugImgSize.w} ${debugImgSize.h}`"
+              class="debug-svg"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g v-for="(block, idx) in ocr.testRunResult.blocks" :key="idx">
+                <rect
+                  :x="block.bbox.x"
+                  :y="block.bbox.y"
+                  :width="block.bbox.width"
+                  :height="block.bbox.height"
+                  :stroke="colColour(block.col_index)"
+                  fill="none"
+                  stroke-width="3"
+                />
+                <!-- Reading-order number badge -->
+                <rect
+                  :x="block.bbox.x"
+                  :y="block.bbox.y - 16"
+                  :width="String(idx + 1).length * 9 + 4"
+                  height="16"
+                  :fill="colColour(block.col_index)"
+                />
+                <text
+                  :x="block.bbox.x + 2"
+                  :y="block.bbox.y - 3"
+                  fill="white"
+                  font-size="13"
+                  font-family="monospace"
+                  font-weight="bold"
+                >{{ idx + 1 }}</text>
+              </g>
+            </svg>
+          </div>
+
+          <!-- Column legend -->
+          <div class="debug-legend">
+            <span
+              v-for="col in [...new Set(ocr.testRunResult.blocks.map(b => b.col_index))].sort()"
+              :key="col"
+              class="legend-chip"
+              :style="{ background: colColour(col) }"
+            >col {{ col }}</span>
+          </div>
+
+          <!-- Block table -->
+          <table class="debug-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>col</th>
+                <th>conf</th>
+                <th>bbox (x,y,w,h)</th>
+                <th>text</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(block, idx) in ocr.testRunResult.blocks" :key="idx">
+                <td :style="{ color: colColour(block.col_index) }">{{ idx + 1 }}</td>
+                <td :style="{ color: colColour(block.col_index) }">{{ block.col_index }}</td>
+                <td>{{ (block.confidence * 100).toFixed(0) }}%</td>
+                <td class="bbox-cell">{{ block.bbox.x }},{{ block.bbox.y }},{{ block.bbox.width }},{{ block.bbox.height }}</td>
+                <td class="text-cell">{{ block.text }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Normal text view -->
+        <pre v-if="!showDebug && ocr.testRunResult.text" class="result-text">{{ ocr.testRunResult.text }}</pre>
       </div>
     </section>
 
@@ -187,9 +287,105 @@ function runTestOcr() {
   font-size: 0.8rem;
 }
 
-.test-result-header { margin-bottom: 0.4rem; color: var(--text-primary, #f0f0f0); }
+.test-result-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+  color: var(--text-primary, #f0f0f0);
+}
 .result-error { color: #f77; }
 .low-conf { color: #ffb400; margin-left: 0.3rem; }
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #aaa);
+  cursor: pointer;
+  margin-left: auto;
+}
+.debug-toggle input { cursor: pointer; }
+
+.debug-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.debug-img-wrap {
+  position: relative;
+  line-height: 0;
+}
+
+.debug-img {
+  width: 100%;
+  display: block;
+  border-radius: 2px;
+}
+
+.debug-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.debug-legend {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.legend-chip {
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: white;
+  font-weight: bold;
+}
+
+.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  font-family: monospace;
+  table-layout: fixed;
+}
+
+.debug-table th {
+  text-align: left;
+  padding: 2px 4px;
+  border-bottom: 1px solid #444;
+  color: var(--text-muted, #aaa);
+  font-weight: normal;
+}
+
+.debug-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid #333;
+  color: var(--text-primary, #f0f0f0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-table th:nth-child(1),
+.debug-table td:nth-child(1) { width: 2.5rem; }
+.debug-table th:nth-child(2),
+.debug-table td:nth-child(2) { width: 2.5rem; }
+.debug-table th:nth-child(3),
+.debug-table td:nth-child(3) { width: 3rem; }
+.debug-table th:nth-child(4),
+.debug-table td:nth-child(4) { width: 9rem; }
+.debug-table th:nth-child(5),
+.debug-table td:nth-child(5) { width: auto; }
+
+.bbox-cell { color: var(--text-muted, #aaa) !important; font-size: 0.68rem; }
+.text-cell { white-space: nowrap; }
 
 .result-text {
   margin: 0;

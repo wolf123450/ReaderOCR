@@ -24,6 +24,7 @@ class TextBlock:
     text: str
     confidence: float   # 0.0 – 1.0
     bbox: BoundingBox
+    col_index: int = 0  # 0-based column index assigned by reading-order sort
 
 
 @dataclass
