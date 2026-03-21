@@ -2,7 +2,9 @@
 
 **Phase**: 5 — Review & Editing UI  
 **Layer**: Tauri + Vue.js frontend  
-**Dependencies**: Step 10 (captured images), Step 18 (extracted text)
+**Dependencies**: Step 10 (captured images), Step 18 (extracted text), Step 46 (block editor — provides the image overlay panel)
+
+> **Note on implementation approach**: The SVG bounding-box overlay built for the OCR debug view in `OcrSubtab.vue` already provides the image panel foundation (image display, SVG overlay, `convertFileSrc` loading, natural-size tracking). The side-by-side viewer should reuse or promote that infrastructure rather than building a separate `ImagePanel.vue` from scratch. The "Debug view" toggle in the OCR tab evolves into step 46 (Block Editor). This step (24) focuses on the page-navigation wrapper and the editable text panel that shows the blocks in reading order — consumed from `editedBlocks` when present, falling back to the raw `OcrPageResult.blocks`.
 
 ## Objective
 
@@ -43,9 +45,11 @@ Build a split-pane view where the user sees the original page image on the left 
 3. Synchronize scroll position between image and text panels (optional, can be toggled)
 
 ### Text editing
-1. Display OCR text in a `<textarea>` or rich text editor
-2. Track dirty state per page (modified vs original)
-3. Auto-save edits to in-memory state on debounced input (500ms)
+1. Display OCR text assembled from the `editedBlocks` for the page (step 46) — blocks of type `excluded`, `header`, `footer`, `page_number` are greyed out and marked, not omitted, so the user can see what will be filtered
+2. The text panel shows blocks as a list of individually-editable entries (mirroring the block order table in step 46) rather than a single flat `<textarea>`; editing a block here is equivalent to editing it in the block editor
+3. Track dirty state per page (modified vs original from raw OCR)
+4. Auto-save edits to in-memory state on debounced input (500ms)
+5. **Click-to-link**: Clicking a block row in the text panel highlights the corresponding bbox in the SVG overlay and scrolls the image to centre on it (same behaviour as clicking in the block table in step 46)
 
 ### Navigation
 1. Page forward/back with keyboard shortcuts (Arrow Left/Right, Page Up/Down)
@@ -73,10 +77,13 @@ Build a split-pane view where the user sees the original page image on the left 
 ### Automated (vitest + vue-test-utils)
 1. **Component mounts**: SideBySideViewer renders with image and text panels
 2. **Page navigation**: Store state updates correctly on page change
-3. **Dirty tracking**: Editing text marks page as dirty in store
+3. **Dirty tracking**: Editing a block's text marks the page as dirty in the OCR store's `editedBlocks`
 4. **Zoom state**: Zoom in/out updates CSS transform value
 5. **Edge page navigation**: Can't go below page 1 or above max page
+6. **editedBlocks fallback**: When `editedBlocks[pageId]` is absent, text panel renders from raw `OcrPageResult.blocks`; when present, renders from edited version
+7. **Excluded blocks visible**: Block with `blockType: "excluded"` renders in the text panel with a visual marker, not removed
 
 ### Manual
-6. **Visual**: Image and text display correctly side by side
-7. **Scroll sync**: Scrolling one panel optionally scrolls the other
+8. **Visual**: Image and text display correctly side by side
+9. **Scroll sync**: Scrolling one panel optionally scrolls the other
+10. **Click-to-highlight**: Clicking a text panel block highlights and centres the matching SVG bbox
