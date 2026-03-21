@@ -8,8 +8,7 @@ use tauri::Manager;
 use capture::windows_api::WindowInfo;
 use capture::region::{CaptureRequest, CaptureResult, PreviewRequest, PreviewResult};
 use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
-use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};
-use capture::session::{SessionData, SessionRegion, read_session, write_session, now_iso8601};
+use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};use capture::session::{SessionData, SessionRegion, read_session, write_session, now_iso8601};
 use keyboard::input::{PageTurnConfig, PageTurnResult};
 use sidecar::client::SidecarClient;
 
@@ -20,7 +19,7 @@ fn list_windows() -> Result<Vec<WindowInfo>, String> {
 
 #[tauri::command]
 fn capture_region(request: CaptureRequest) -> Result<CaptureResult, String> {
-    capture::region::capture_region(&request)
+    capture::region::capture_region(&request).map(|(result, _img)| result)
 }
 
 #[tauri::command]
@@ -87,6 +86,7 @@ async fn start_batch_capture(
         let delay = std::cmp::max(config.delay_between_ms, 200);
         let mut page_num: u32 = config.start_page;
         let mut pages_done: u32 = if config.start_page > 1 { config.start_page - 1 } else { 0 };
+        let mut prev_page_hash: Option<image_hasher::ImageHash> = None;
 
         loop {
             if ctrl.is_stopped() {
@@ -101,10 +101,12 @@ async fn start_batch_capture(
                 break;
             }
 
-            let progress = capture_single_page(&config, page_num);
+            let t_page = std::time::Instant::now();
+            let (progress, captured_img) = capture_single_page(&config, page_num);
+            eprintln!("[PROFILE] --- page {} ---", page_num);
+            eprintln!("[PROFILE] capture_single_page: {}ms", t_page.elapsed().as_millis());
             let _ = app.emit("capture-progress", &progress);
             let had_error = progress.status == "error";
-            let current_path = progress.image_path.clone();
 
             if !had_error {
                 pages_done = page_num;
@@ -130,20 +132,25 @@ async fn start_batch_capture(
                 break;
             }
 
-            // Duplicate detection
+            // Duplicate detection — compare in-memory hashes, no disk re-read.
             if page_num > 1 {
-                let prev_path = format_page_path(&config.output_dir, &config.file_prefix, page_num - 1);
-                let dup_req = DuplicateCheckRequest {
-                    image_path_a: prev_path,
-                    image_path_b: current_path,
-                    threshold: 5,
-                };
-                if let Ok(dup_result) = capture::duplicate::check_duplicate(&dup_req) {
+                if let (Some(prev_hash), Some(img)) = (&prev_page_hash, &captured_img) {
+                    let t_dup = std::time::Instant::now();
+                    let curr_hash = capture::duplicate::hash_image(img);
+                    let dup_result = capture::duplicate::compare_hashes(prev_hash, &curr_hash, 5);
+                    eprintln!("[PROFILE] dup_check (mem):     {:>5}ms  (dist={})",
+                        t_dup.elapsed().as_millis(), dup_result.hamming_distance);
                     if dup_result.is_duplicate {
                         let _ = app.emit("capture-duplicate-detected", &dup_result);
                         let _ = app.emit("capture-completed", serde_json::json!({ "pages": pages_done }));
                         break;
                     }
+                    prev_page_hash = Some(curr_hash);
+                }
+            } else {
+                // Page 1: just store the hash for the next iteration.
+                if let Some(img) = &captured_img {
+                    prev_page_hash = Some(capture::duplicate::hash_image(img));
                 }
             }
 
@@ -156,6 +163,7 @@ async fn start_batch_capture(
             }
 
             // Page turn
+            let t_turn = std::time::Instant::now();
             if let Err(e) = turn_page(&config) {
                 let err_progress = CaptureProgress {
                     page_number: page_num,
@@ -169,7 +177,12 @@ async fn start_batch_capture(
                 break;
             }
 
+            eprintln!("[PROFILE] turn_page:           {:>5}ms", t_turn.elapsed().as_millis());
+
+            let t_sleep = std::time::Instant::now();
             std::thread::sleep(std::time::Duration::from_millis(delay));
+            eprintln!("[PROFILE] sleep({}ms):        {:>5}ms", delay, t_sleep.elapsed().as_millis());
+            eprintln!("[PROFILE] page {} TOTAL cycle: {}ms", page_num, t_page.elapsed().as_millis());
             page_num += 1;
         }
 

@@ -1,4 +1,5 @@
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{DynamicImage, ImageEncoder, ImageFormat, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -51,25 +52,45 @@ fn find_monitor(x: i32, y: i32) -> Result<Monitor, String> {
         .ok_or_else(|| format!("No monitor found containing point ({x}, {y})"))
 }
 
-/// Capture a region of the screen and save as PNG.
-pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
-    // Clamp negative coords from maximized windows
+/// Save a `DynamicImage` to a file as PNG with fast (level-1) compression.
+fn save_png_fast(img: &DynamicImage, path: &Path) -> Result<u64, String> {
+    let file = fs::File::create(path)
+        .map_err(|e| format!("Failed to create PNG file: {e}"))?;
+    let encoder = PngEncoder::new_with_quality(
+        std::io::BufWriter::new(file),
+        CompressionType::Fast,
+        FilterType::Sub,
+    );
+    let (width, height) = (img.width(), img.height());
+    encoder
+        .write_image(img.as_bytes(), width, height, img.color().into())
+        .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+    let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    Ok(size)
+}
+
+/// Capture a screen region, save to disk, and return the image data for
+/// immediate in-memory use (e.g. duplicate hashing without a re-decode).
+pub fn capture_region(req: &CaptureRequest) -> Result<(CaptureResult, DynamicImage), String> {
+    let t0 = std::time::Instant::now();
+
     let (cx, cy, cw, ch) = clamp_to_screen(req.x, req.y, req.width, req.height);
 
+    let t_find = std::time::Instant::now();
     let monitor = find_monitor(cx, cy)?;
+    eprintln!("[PROFILE] find_monitor:    {:>5}ms", t_find.elapsed().as_millis());
 
-    // Capture the full monitor
+    let t_shot = std::time::Instant::now();
     let screenshot = monitor
         .capture_image()
         .map_err(|e| format!("Screen capture failed: {e}"))?;
+    eprintln!("[PROFILE] capture_image:   {:>5}ms  ({}x{})",
+        t_shot.elapsed().as_millis(), screenshot.width(), screenshot.height());
 
-    // Calculate crop coordinates relative to the monitor
     let mon_x = monitor.x().map_err(|e| format!("Failed to get monitor x: {e}"))?;
     let mon_y = monitor.y().map_err(|e| format!("Failed to get monitor y: {e}"))?;
     let crop_x = ((cx - mon_x) as u32).min(screenshot.width());
     let crop_y = ((cy - mon_y) as u32).min(screenshot.height());
-
-    // Clamp width/height to not exceed image bounds
     let crop_w = cw.min(screenshot.width().saturating_sub(crop_x));
     let crop_h = ch.min(screenshot.height().saturating_sub(crop_y));
 
@@ -77,32 +98,30 @@ pub fn capture_region(req: &CaptureRequest) -> Result<CaptureResult, String> {
         return Err("Capture region has zero area after clamping to monitor bounds".to_string());
     }
 
-    // Crop the screenshot
+    let t_crop = std::time::Instant::now();
     let rgba: RgbaImage = screenshot;
     let cropped = DynamicImage::ImageRgba8(rgba).crop_imm(crop_x, crop_y, crop_w, crop_h);
+    eprintln!("[PROFILE] crop_imm:        {:>5}ms  (->{}x{})",
+        t_crop.elapsed().as_millis(), crop_w, crop_h);
 
-    // Ensure output directory exists
     let output = Path::new(&req.output_path);
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create output directory: {e}"))?;
     }
 
-    // Save as PNG
-    cropped
-        .save_with_format(output, ImageFormat::Png)
-        .map_err(|e| format!("Failed to save PNG: {e}"))?;
+    let t_save = std::time::Instant::now();
+    let file_size = save_png_fast(&cropped, output)?;
+    eprintln!("[PROFILE] save_png (fast): {:>5}ms  ({} KB)", t_save.elapsed().as_millis(), file_size / 1024);
 
-    let file_size = fs::metadata(output)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    eprintln!("[PROFILE] capture_region TOTAL: {}ms", t0.elapsed().as_millis());
 
-    Ok(CaptureResult {
+    Ok((CaptureResult {
         output_path: req.output_path.clone(),
         width: crop_w,
         height: crop_h,
         file_size_bytes: file_size,
-    })
+    }, cropped))
 }
 
 #[derive(Debug, Deserialize)]
@@ -183,7 +202,7 @@ mod tests {
             output_path: output.to_string_lossy().to_string(),
         };
 
-        let result = capture_region(&req).expect("capture should succeed");
+        let (result, _img) = capture_region(&req).expect("capture should succeed");
         assert!(Path::new(&result.output_path).exists(), "PNG file should exist");
         assert!(result.file_size_bytes > 0, "File should not be empty");
         assert!(result.width > 0, "Width should be positive");
@@ -209,7 +228,7 @@ mod tests {
             output_path: output.to_string_lossy().to_string(),
         };
 
-        let result = capture_region(&req).expect("capture should succeed");
+        let (result, _img) = capture_region(&req).expect("capture should succeed");
         assert!(Path::new(&result.output_path).exists());
 
         // Cleanup
@@ -228,7 +247,7 @@ mod tests {
             output_path: output.to_string_lossy().to_string(),
         };
 
-        let result = capture_region(&req).expect("capture should succeed");
+        let (result, _img) = capture_region(&req).expect("capture should succeed");
         let img = image::open(&result.output_path).expect("Should open as image");
         let rgba = img.to_rgba8();
 

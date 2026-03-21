@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
+use image::DynamicImage;
 use super::region::{capture_region, CaptureRequest};
 use crate::keyboard::input::{send_page_turn, PageTurnConfig};
 
@@ -87,11 +88,12 @@ pub fn format_page_path(output_dir: &str, prefix: &str, page_num: u32) -> String
     path.to_string_lossy().to_string()
 }
 
-/// Run a single capture iteration: capture + page turn.
+/// Run a single capture iteration and return both the progress event and the
+/// captured image data (for in-memory duplicate hashing).
 pub fn capture_single_page(
     config: &BatchCaptureConfig,
     page_number: u32,
-) -> CaptureProgress {
+) -> (CaptureProgress, Option<DynamicImage>) {
     let output_path = format_page_path(&config.output_dir, &config.file_prefix, page_number);
 
     let req = CaptureRequest {
@@ -103,20 +105,26 @@ pub fn capture_single_page(
     };
 
     match capture_region(&req) {
-        Ok(_result) => CaptureProgress {
-            page_number,
-            total_pages: config.max_pages,
-            image_path: output_path,
-            status: "captured".to_string(),
-            error_message: None,
-        },
-        Err(e) => CaptureProgress {
-            page_number,
-            total_pages: config.max_pages,
-            image_path: output_path,
-            status: "error".to_string(),
-            error_message: Some(e),
-        },
+        Ok((_result, img)) => (
+            CaptureProgress {
+                page_number,
+                total_pages: config.max_pages,
+                image_path: output_path,
+                status: "captured".to_string(),
+                error_message: None,
+            },
+            Some(img),
+        ),
+        Err(e) => (
+            CaptureProgress {
+                page_number,
+                total_pages: config.max_pages,
+                image_path: output_path,
+                status: "error".to_string(),
+                error_message: Some(e),
+            },
+            None,
+        ),
     }
 }
 
@@ -184,12 +192,78 @@ mod tests {
             book_name: String::new(),
         };
 
-        let progress = capture_single_page(&config, 1);
+        let (progress, _img) = capture_single_page(&config, 1);
         assert_eq!(progress.status, "captured");
         assert_eq!(progress.page_number, 1);
         assert!(std::path::Path::new(&progress.image_path).exists());
 
         // Cleanup
+        let _ = std::fs::remove_dir_all(&output_dir);
+    }
+
+    /// Profiling test: captures a 1280×800 region 5 times and prints per-phase
+    /// timings so we can see where the per-page time is being spent.
+    /// Run with: cargo test profile_capture_cycle -- --nocapture --ignored
+    #[test]
+    #[ignore]
+    fn profile_capture_cycle() {
+
+        let output_dir = std::env::temp_dir()
+            .join("kindleocr_profile_test")
+            .to_string_lossy()
+            .to_string();
+
+        let config = BatchCaptureConfig {
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 800,
+            window_handle: 0,
+            output_dir: output_dir.clone(),
+            delay_between_ms: 0,
+            max_pages: Some(5),
+            file_prefix: "prof".to_string(),
+            page_turn_key: "Right".to_string(),
+            start_page: 1,
+            book_name: String::new(),
+        };
+
+        println!("\n=== KindleOCR capture profiling (5 pages, 1280×800) ===");
+
+        let mut prev_hash: Option<image_hasher::ImageHash> = None;
+
+        for page in 1u32..=5 {
+            let t_cycle = std::time::Instant::now();
+
+            // --- capture ---
+            let t_cap = std::time::Instant::now();
+            let (progress, img) = capture_single_page(&config, page);
+            let cap_ms = t_cap.elapsed().as_millis();
+            assert_eq!(progress.status, "captured", "Capture failed on page {page}");
+            let img = img.unwrap();
+
+            // --- in-memory duplicate check (page 2 onwards) ---
+            let dup_ms = if let Some(ph) = &prev_hash {
+                use crate::capture::duplicate::{hash_image, compare_hashes};
+                let t_dup = std::time::Instant::now();
+                let curr_hash = hash_image(&img);
+                let _result = compare_hashes(ph, &curr_hash, 5);
+                let ms = t_dup.elapsed().as_millis();
+                prev_hash = Some(curr_hash);
+                ms
+            } else {
+                use crate::capture::duplicate::hash_image;
+                prev_hash = Some(hash_image(&img));
+                0
+            };
+
+            let cycle_ms = t_cycle.elapsed().as_millis();
+            println!(
+                "  page {page}: capture={cap_ms}ms  dup_check={dup_ms}ms  cycle_total={cycle_ms}ms"
+            );
+        }
+
+        println!("=== done ===\n");
         let _ = std::fs::remove_dir_all(&output_dir);
     }
 }
