@@ -9,6 +9,7 @@ use capture::windows_api::WindowInfo;
 use capture::region::{CaptureRequest, CaptureResult, PreviewRequest, PreviewResult};
 use capture::batch::{BatchCaptureConfig, BatchControl, CaptureProgress, capture_single_page, turn_page, format_page_path};
 use capture::duplicate::{DuplicateCheckRequest, DuplicateCheckResult};use capture::session::{SessionData, SessionRegion, read_session, write_session, now_iso8601};
+use capture::reconcile::DiskScanResult;
 use keyboard::input::{PageTurnConfig, PageTurnResult};
 use sidecar::client::SidecarClient;
 
@@ -260,6 +261,11 @@ fn sidecar_ping(client: tauri::State<'_, Mutex<SidecarClient>>) -> Result<serde_
     guard.call::<serde_json::Value, serde_json::Value>("ping", serde_json::json!({}))
 }
 
+#[tauri::command]
+fn scan_session_dir(output_dir: String, file_prefix: String) -> DiskScanResult {
+    capture::reconcile::scan_session_dir(&output_dir, &file_prefix)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -315,6 +321,7 @@ pub fn run() {
       stop_batch_capture,
       load_session,
       save_session,
+      scan_session_dir,
       sidecar_status,
       sidecar_ping
     ])
