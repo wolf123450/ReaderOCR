@@ -44,6 +44,7 @@ export const useOcrStore = defineStore("ocr", () => {
   const batchProgress = ref<OcrBatchProgress>({ current: 0, total: 0, errors: 0 });
   const ocrQueue = ref<number[]>([]); // indices into capturedPages
   const pageResults = ref<Map<number, OcrPageResult>>(new Map());
+  const editedBlocks = ref<Map<number, TextBlock[]>>(new Map()); // pageNumber → edited blocks
   const testRunResult = ref<OcrPageResult | null>(null);
   const testRunning = ref(false);
   const isProcessing = ref(false);
@@ -53,6 +54,37 @@ export const useOcrStore = defineStore("ocr", () => {
 
   const isRunning = computed(() => batchState.value === "running");
   const isPaused = computed(() => batchState.value === "paused");
+
+  // --- Edited blocks (Step 46) ---
+
+  function setEditedBlocks(pageNumber: number, blocks: TextBlock[]): void {
+    editedBlocks.value.set(pageNumber, [...blocks]);
+  }
+
+  function resetEditedBlocks(pageNumber: number): void {
+    editedBlocks.value.delete(pageNumber);
+  }
+
+  function moveBlock(pageNumber: number, fromIdx: number, toIdx: number): void {
+    const blocks = editedBlocks.value.get(pageNumber);
+    if (!blocks) return;
+    if (fromIdx < 0 || fromIdx >= blocks.length) return;
+    if (toIdx < 0 || toIdx >= blocks.length) return;
+    const [removed] = blocks.splice(fromIdx, 1);
+    blocks.splice(toIdx, 0, removed);
+  }
+
+  function setBlockType(pageNumber: number, blockIdx: number, type: string): void {
+    const blocks = editedBlocks.value.get(pageNumber);
+    if (!blocks || blockIdx < 0 || blockIdx >= blocks.length) return;
+    blocks[blockIdx] = { ...blocks[blockIdx], type };
+  }
+
+  function setBlockText(pageNumber: number, blockIdx: number, text: string): void {
+    const blocks = editedBlocks.value.get(pageNumber);
+    if (!blocks || blockIdx < 0 || blockIdx >= blocks.length) return;
+    blocks[blockIdx] = { ...blocks[blockIdx], text };
+  }
 
   // --- Batch OCR ---
 
@@ -213,6 +245,7 @@ export const useOcrStore = defineStore("ocr", () => {
     batchProgress,
     ocrQueue,
     pageResults,
+    editedBlocks,
     testRunResult,
     testRunning,
     isProcessing,
@@ -225,5 +258,10 @@ export const useOcrStore = defineStore("ocr", () => {
     runTestOcr,
     rerunPageOcr,
     onPageCaptured,
+    setEditedBlocks,
+    resetEditedBlocks,
+    moveBlock,
+    setBlockType,
+    setBlockText,
   };
 });
