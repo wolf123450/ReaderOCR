@@ -13,8 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 ocr = [
-    "paddlepaddle>=2.6",
-    "paddleocr>=2.7",
+    "paddlepaddle>=3.3",
+    "paddleocr>=3.4",
 ]
 ollama = [
     "httpx>=0.27",
