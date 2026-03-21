@@ -39,6 +39,30 @@ fn default_capture_status() -> String { "ok".to_string() }
 fn default_page_type() -> String { "text".to_string() }
 fn default_ocr_status() -> String { "pending".to_string() }
 
+/// A fractional region of a source page for chapter mapping (0.0 = top, 1.0 = bottom).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPageFraction {
+    pub page_index: u32,
+    pub start: f64,
+    pub end: f64,
+}
+
+/// A chapter segment mapping source pages to an EPUB chapter.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChapter {
+    pub id: String,
+    pub title: String,
+    pub chapter_index: u32,
+    pub sources: Vec<SessionPageFraction>,
+    /// "front_matter" | "chapter" | "back_matter" | "part" | "appendix"
+    #[serde(default = "default_chapter_type")]
+    pub chapter_type: String,
+}
+
+fn default_chapter_type() -> String { "chapter".to_string() }
+
 /// Session metadata file written to the capture output directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +90,9 @@ pub struct SessionData {
     /// Per-page metadata; absent in legacy sessions (defaults to empty vec).
     #[serde(default)]
     pub pages: Vec<SessionPage>,
+    /// Chapter structure; absent in legacy sessions (defaults to empty vec).
+    #[serde(default)]
+    pub chapters: Vec<SessionChapter>,
 }
 
 /// Return the path to the session file inside `dir`.
@@ -175,6 +202,7 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
             pages: vec![],
+            chapters: vec![],
         }
     }
 
