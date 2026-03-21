@@ -29,11 +29,14 @@ def _get_ppocr() -> Any:
                 "Install with: pip install paddleocr paddlepaddle"
             ) from exc
 
+        # Disable heavy document preprocessing — not needed for book page images.
         # show_log=False suppresses verbose model-loading output.
+        # device is omitted to let PaddlePaddle auto-select GPU/CPU.
         _ppocr_instance = PaddleOCR(
-            use_angle_cls=True,
             lang="en",
-            use_gpu=True,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
             show_log=False,
         )
     return _ppocr_instance
@@ -50,10 +53,10 @@ def ocr_page_paddle(params: OcrProcessPageParams) -> OcrPageResult:
     Returns empty blocks with avg_confidence=0.0 when no text is found.
     """
     ocr = _get_ppocr()
-    raw = ocr.ocr(params.image_path, cls=True)
+    # PaddleOCR 3.x uses predict() which returns an iterable of result objects.
+    results = list(ocr.predict(params.image_path))
 
-    # PaddleOCR returns [[line, ...]] or [None] for blank images.
-    if not raw or raw[0] is None:
+    if not results:
         return OcrPageResult(
             page_index=params.page_index,
             blocks=[],
@@ -61,22 +64,27 @@ def ocr_page_paddle(params: OcrProcessPageParams) -> OcrPageResult:
             avg_confidence=0.0,
         )
 
+    # predict() yields one result per page; take the first for single images.
+    res = results[0]["res"]
+    rec_texts: List[str] = res.get("rec_texts", [])
+    rec_scores = res.get("rec_scores", [])
+    rec_polys = res.get("rec_polys", [])  # shape (N, 4, 2) — four corner points each
+
     blocks: List[TextBlock] = []
-    for line in raw[0]:
-        if line is None:
+    for text, score, poly in zip(rec_texts, rec_scores, rec_polys):
+        if not text:
             continue
-        points, (text, confidence) = line
-        xs = [p[0] for p in points]
-        ys = [p[1] for p in points]
-        x = int(min(xs))
-        y = int(min(ys))
-        w = int(max(xs)) - x
-        h = int(max(ys)) - y
+        xs = [int(p[0]) for p in poly]
+        ys = [int(p[1]) for p in poly]
+        x = min(xs)
+        y = min(ys)
+        w = max(xs) - x
+        h = max(ys) - y
         blocks.append(
             TextBlock(
                 type="body",
                 text=text,
-                confidence=float(confidence),
+                confidence=float(score),
                 bbox=BoundingBox(x=x, y=y, width=w, height=h),
             )
         )

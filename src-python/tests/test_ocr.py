@@ -109,21 +109,27 @@ class TestPaddleOcrModule:
     """Tests that mock PaddleOCR so they run without the actual package."""
 
     def _mock_paddle_result(self):
-        """Build a fake PaddleOCR output structure."""
-        # PaddleOCR returns: [[[ [bbox_points, (text, conf)], ... ]]]
+        """Build a fake PaddleOCR 3.x predict() output structure."""
+        # predict() returns a list of dicts: [{"res": {"rec_texts": [...], ...}}]
         return [
-            [
-                [[[10, 20], [110, 20], [110, 40], [10, 40]], ("Hello world", 0.97)],
-                [[[10, 50], [200, 50], [200, 70], [10, 70]], ("Second line", 0.88)],
-                [[[10, 80], [150, 80], [150, 100], [10, 100]], ("Third line", 0.75)],
-            ]
+            {
+                "res": {
+                    "rec_texts": ["Hello world", "Second line", "Third line"],
+                    "rec_scores": [0.97, 0.88, 0.75],
+                    "rec_polys": [
+                        [[10, 20], [110, 20], [110, 40], [10, 40]],
+                        [[10, 50], [200, 50], [200, 70], [10, 70]],
+                        [[10, 80], [150, 80], [150, 100], [10, 100]],
+                    ],
+                }
+            }
         ]
 
     def test_basic_ocr_returns_blocks(self):
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = self._mock_paddle_result()
+        mock_ocr.predict.return_value = self._mock_paddle_result()
 
         with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
             params = OcrProcessPageParams(image_path="/fake/img.png", page_index=1)
@@ -138,14 +144,20 @@ class TestPaddleOcrModule:
 
         # Out-of-order y coordinates
         raw = [
-            [
-                [[[10, 80], [110, 80], [110, 100], [10, 100]], ("Third", 0.9)],
-                [[[10, 20], [110, 20], [110, 40], [10, 40]], ("First", 0.9)],
-                [[[10, 50], [110, 50], [110, 70], [10, 70]], ("Second", 0.9)],
-            ]
+            {
+                "res": {
+                    "rec_texts": ["Third", "First", "Second"],
+                    "rec_scores": [0.9, 0.9, 0.9],
+                    "rec_polys": [
+                        [[10, 80], [110, 80], [110, 100], [10, 100]],
+                        [[10, 20], [110, 20], [110, 40], [10, 40]],
+                        [[10, 50], [110, 50], [110, 70], [10, 70]],
+                    ],
+                }
+            }
         ]
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = raw
+        mock_ocr.predict.return_value = raw
 
         with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
             params = OcrProcessPageParams(image_path="/fake/img.png")
@@ -158,7 +170,7 @@ class TestPaddleOcrModule:
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = [None]
+        mock_ocr.predict.return_value = []
 
         with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
             result = ocr_page_paddle(OcrProcessPageParams(image_path="/fake/blank.png"))
@@ -171,13 +183,19 @@ class TestPaddleOcrModule:
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
         raw = [
-            [
-                [[[0, 0], [100, 0], [100, 20], [0, 20]], ("A", 0.8)],
-                [[[0, 30], [100, 30], [100, 50], [0, 50]], ("B", 0.6)],
-            ]
+            {
+                "res": {
+                    "rec_texts": ["A", "B"],
+                    "rec_scores": [0.8, 0.6],
+                    "rec_polys": [
+                        [[0, 0], [100, 0], [100, 20], [0, 20]],
+                        [[0, 30], [100, 30], [100, 50], [0, 50]],
+                    ],
+                }
+            }
         ]
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = raw
+        mock_ocr.predict.return_value = raw
 
         with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
             result = ocr_page_paddle(OcrProcessPageParams(image_path="/fake/img.png"))
@@ -188,7 +206,7 @@ class TestPaddleOcrModule:
         from kindleocr.ocr.paddle_ocr import ocr_page_paddle
 
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = self._mock_paddle_result()
+        mock_ocr.predict.return_value = self._mock_paddle_result()
 
         with patch("kindleocr.ocr.paddle_ocr._get_ppocr", return_value=mock_ocr):
             result = ocr_page_paddle(OcrProcessPageParams(image_path="/fake/img.png"))
@@ -249,12 +267,16 @@ class TestOcrServerHandler:
         img.save(img_path)
 
         raw = [
-            [
-                [[[5, 5], [45, 5], [45, 20], [5, 20]], ("Test text", 0.92)],
-            ]
+            {
+                "res": {
+                    "rec_texts": ["Test text"],
+                    "rec_scores": [0.92],
+                    "rec_polys": [[[5, 5], [45, 5], [45, 20], [5, 20]]],
+                }
+            }
         ]
         mock_ocr = MagicMock()
-        mock_ocr.ocr.return_value = raw
+        mock_ocr.predict.return_value = raw
 
         import kindleocr.ocr.paddle_ocr as paddle_mod
         original = paddle_mod._ppocr_instance
