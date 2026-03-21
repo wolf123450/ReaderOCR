@@ -12,6 +12,13 @@ from typing import Any, List, Optional
 
 from kindleocr.ocr.engine import BoundingBox, OcrPageResult, OcrProcessPageParams, TextBlock
 
+# Ensure OneDNN/MKL-DNN flags are set before PaddlePaddle is imported.
+# These env vars tell PaddlePaddle's C++ layer to skip the OneDNN backend.
+# The primary API-level fix is enable_mkldnn=False in PaddleOCR() below;
+# the env vars provide a secondary safeguard for any early internal imports.
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
+os.environ.setdefault("PADDLE_DISABLE_MKLDNN", "1")
+
 # ---------------------------------------------------------------------------
 # Lazy singleton
 # ---------------------------------------------------------------------------
@@ -31,20 +38,21 @@ def _get_ppocr() -> Any:
                 "Install with: pip install paddleocr paddlepaddle"
             ) from exc
 
-        # Disable heavy document preprocessing — not needed for book page images.
         # Silence verbose PaddleOCR/PaddleX log output via Python logging.
         for _log_name in ("paddleocr", "ppocr", "paddlex"):
             logging.getLogger(_log_name).setLevel(logging.WARNING)
 
-        # Disable OneDNN (MKL-DNN) backend — it has unimplemented ops in the
-        # current PaddlePaddle 3.x PIR compiler on CPU and causes runtime errors
-        # like "ConvertPirAttribute2RuntimeAttribute not support ArrayAttribute".
-        os.environ.setdefault("FLAGS_use_mkldnn", "0")
-        os.environ.setdefault("PADDLE_DISABLE_MKLDNN", "1")
-
+        # Disable OneDNN (MKL-DNN) via the PaddleOCR API.
+        # PaddlePaddle 3.x defaults to enable_mkldnn=True on CPU, which causes
+        # the PIR executor to compile OneDNN ops.  When those ops hit an
+        # unimplemented attribute converter (onednn_instruction.cc:118) the
+        # entire predict() call raises NotImplementedError.  Passing
+        # enable_mkldnn=False tells PaddleX to call config.disable_mkldnn() so
+        # the model is compiled with plain CPU ops instead.
         _ppocr_instance = PaddleOCR(
             lang="en",
             device="cpu",
+            enable_mkldnn=False,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
@@ -74,11 +82,13 @@ def ocr_page_paddle(params: OcrProcessPageParams) -> OcrPageResult:
             avg_confidence=0.0,
         )
 
-    # predict() yields one result per page; take the first for single images.
-    res = results[0]["res"]
-    rec_texts: List[str] = res.get("rec_texts", [])
-    rec_scores = res.get("rec_scores", [])
-    rec_polys = res.get("rec_polys", [])  # shape (N, 4, 2) — four corner points each
+    # predict() yields one OCRResult per page; take the first for single images.
+    # The result is a dict-like object whose keys include rec_texts, rec_scores,
+    # and rec_polys directly (no nested "res" wrapper in PaddleOCR 3.x / PaddleX).
+    result_obj = results[0]
+    rec_texts: List[str] = result_obj.get("rec_texts", [])
+    rec_scores = result_obj.get("rec_scores", [])
+    rec_polys = result_obj.get("rec_polys", [])  # list of numpy (N, 2) polygon arrays
 
     blocks: List[TextBlock] = []
     for text, score, poly in zip(rec_texts, rec_scores, rec_polys):
