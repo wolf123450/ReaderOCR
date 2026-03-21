@@ -268,6 +268,40 @@ export const useCaptureStore = defineStore("capture", () => {
     capturedPages.value[index].captureStatus = status;
   }
 
+  /** Reassign all pageNumber values sequentially starting from 1. */
+  function renumber(): void {
+    capturedPages.value.forEach((p, i) => {
+      p.pageNumber = i + 1;
+    });
+  }
+
+  /** Move a page from `fromIndex` to `toIndex` and renumber. */
+  function reorderPages(fromIndex: number, toIndex: number): void {
+    const pages = capturedPages.value;
+    if (
+      fromIndex < 0 || fromIndex >= pages.length ||
+      toIndex < 0 || toIndex >= pages.length ||
+      fromIndex === toIndex
+    ) return;
+    const [moved] = pages.splice(fromIndex, 1);
+    pages.splice(toIndex, 0, moved);
+    renumber();
+  }
+
+  /** Insert a new page at `index` (0-based) and renumber. */
+  function insertPageAt(index: number, page: CapturedPage): void {
+    const clampedIndex = Math.max(0, Math.min(index, capturedPages.value.length));
+    capturedPages.value.splice(clampedIndex, 0, page);
+    renumber();
+  }
+
+  /** Remove the page at `index` and renumber. */
+  function deletePage(index: number): void {
+    if (index < 0 || index >= capturedPages.value.length) return;
+    capturedPages.value.splice(index, 1);
+    renumber();
+  }
+
   return {
     // Window selection
     windows,
@@ -305,5 +339,9 @@ export const useCaptureStore = defineStore("capture", () => {
     recordCapture,
     setPageType,
     setCaptureStatus,
+    renumber,
+    reorderPages,
+    insertPageAt,
+    deletePage,
   };
 });

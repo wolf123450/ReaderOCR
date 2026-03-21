@@ -1,16 +1,37 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { useUiStore } from "@/stores/ui";
 import ReviewLayout from "@/components/ReviewLayout.vue";
+import PageDetailPane from "@/components/PageDetailPane.vue";
+import InsertPageDialog from "@/components/InsertPageDialog.vue";
 
 const ui = useUiStore();
+
+const insertDialog = ref<{ visible: boolean; insertIndex: number }>({
+  visible: false,
+  insertIndex: 0,
+});
+
+function openInsertBefore(index: number) {
+  insertDialog.value = { visible: true, insertIndex: index };
+}
+
+function openInsertAfter(index: number) {
+  insertDialog.value = { visible: true, insertIndex: index + 1 };
+}
 </script>
 
 <template>
-  <ReviewLayout>
+  <ReviewLayout
+    @insert-before="openInsertBefore"
+    @insert-after="openInsertAfter"
+  >
     <template #default="{ subtab }">
-      <div v-if="subtab === 'pages'" class="subtab-stub">
-        <p>Pages view — drag-drop management (step 41)</p>
-      </div>
+      <PageDetailPane
+        v-if="subtab === 'pages'"
+        @insert-before="ui.selectedPageIndex !== null && openInsertBefore(ui.selectedPageIndex)"
+        @insert-after="ui.selectedPageIndex !== null && openInsertAfter(ui.selectedPageIndex)"
+      />
       <div v-else-if="subtab === 'ocr'" class="subtab-stub">
         <p>OCR workflow (step 44)</p>
       </div>
@@ -22,6 +43,12 @@ const ui = useUiStore();
       </div>
     </template>
   </ReviewLayout>
+
+  <InsertPageDialog
+    :visible="insertDialog.visible"
+    :insert-index="insertDialog.insertIndex"
+    @close="insertDialog.visible = false"
+  />
 </template>
 
 <style scoped>
