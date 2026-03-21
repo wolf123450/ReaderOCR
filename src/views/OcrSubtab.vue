@@ -79,6 +79,17 @@ function colColour(colIndex: number): string {
             <option v-for="l in languages" :key="l.value" :value="l.value">{{ l.label }}</option>
           </select>
         </label>
+        <label>
+          Max columns:
+          <input
+            type="number"
+            :value="settings.ocrMaxColumns"
+            min="1"
+            max="20"
+            class="setting-input-num"
+            @change="settings.setOcrMaxColumns(+($event.target as HTMLInputElement).value)"
+          />
+        </label>
       </div>
     </section>
 
@@ -275,6 +286,18 @@ function colColour(colIndex: number): string {
   font-size: 0.8rem;
   padding: 2px 4px;
   margin-left: 0.4rem;
+}
+
+.setting-input-num {
+  background: var(--nav-bg, #1a1a1a);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #f0f0f0);
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  margin-left: 0.4rem;
+  width: 3.5rem;
+  text-align: center;
 }
 
 .test-run-row { margin-bottom: 0.5rem; }

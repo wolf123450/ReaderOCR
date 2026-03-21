@@ -113,6 +113,7 @@ export const useOcrStore = defineStore("ocr", () => {
         pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
+        maxCols: useSettingsStore().ocrMaxColumns,
       });
       captureStore.capturedPages[idx].ocrStatus = "done";
       pageResults.value.set(page.pageNumber, result);
@@ -154,6 +155,7 @@ export const useOcrStore = defineStore("ocr", () => {
         pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
+        maxCols: useSettingsStore().ocrMaxColumns,
       });
       testRunResult.value = result;
     } catch (e: unknown) {
@@ -180,6 +182,7 @@ export const useOcrStore = defineStore("ocr", () => {
         pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
+        maxCols: useSettingsStore().ocrMaxColumns,
       });
       captureStore.capturedPages[pageIndex].ocrStatus = "done";
       pageResults.value.set(page.pageNumber, result);

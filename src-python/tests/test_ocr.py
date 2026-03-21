@@ -126,11 +126,78 @@ class TestOcrDataTypes:
         params = OcrProcessPageParams(image_path="/tmp/img.png")
         assert params.engine == "ppocr"
         assert params.page_index == 0
+        assert params.max_cols == 10
 
 
 # ---------------------------------------------------------------------------
 # paddle_ocr module tests (using mocked PaddleOCR)
 # ---------------------------------------------------------------------------
+
+class TestColumnDetection:
+    """Unit tests for the k-means + BIC column detection helpers."""
+
+    def test_kmeans_1d_single_cluster(self):
+        from kindleocr.ocr.paddle_ocr import _kmeans_1d
+        centers = _kmeans_1d([100.0, 105.0, 98.0], k=1)
+        assert len(centers) == 1
+        assert abs(centers[0] - 101.0) < 1.0
+
+    def test_kmeans_1d_two_clusters(self):
+        from kindleocr.ocr.paddle_ocr import _kmeans_1d
+        # Clearly separated groups: left ~100, right ~700
+        data = [98.0, 100.0, 102.0, 698.0, 700.0, 702.0]
+        centers = _kmeans_1d(data, k=2)
+        assert len(centers) == 2
+        assert abs(centers[0] - 100.0) < 5.0
+        assert abs(centers[1] - 700.0) < 5.0
+
+    def test_kmeans_1d_k_exceeds_n_returns_individual(self):
+        from kindleocr.ocr.paddle_ocr import _kmeans_1d
+        centers = _kmeans_1d([50.0, 200.0], k=5)
+        assert len(centers) == 2
+
+    def test_best_column_count_single_column(self):
+        from kindleocr.ocr.paddle_ocr import _best_column_count
+        # All blocks in one vertical column — tightly clustered x.
+        cx = [100.0] * 10
+        assert _best_column_count(cx, max_cols=6) == 1
+
+    def test_best_column_count_two_columns(self):
+        from kindleocr.ocr.paddle_ocr import _best_column_count
+        # Two well-separated columns.
+        cx = [100.0, 102.0, 99.0, 700.0, 698.0, 701.0]
+        assert _best_column_count(cx, max_cols=6) == 2
+
+    def test_best_column_count_four_columns(self):
+        from kindleocr.ocr.paddle_ocr import _best_column_count
+        # Four tight clusters with large inter-cluster gaps.
+        cx = (
+            [100.0, 101.0, 99.0]   # col 0
+            + [300.0, 299.0, 301.0]  # col 1
+            + [500.0, 501.0, 499.0]  # col 2
+            + [700.0, 699.0, 701.0]  # col 3
+        )
+        assert _best_column_count(cx, max_cols=10) == 4
+
+    def test_best_column_count_max_cols_cap(self):
+        from kindleocr.ocr.paddle_ocr import _best_column_count
+        # Even with clearly separated data, max_cols=1 forces single column.
+        cx = [100.0, 102.0, 700.0, 698.0]
+        assert _best_column_count(cx, max_cols=1) == 1
+
+    def test_sort_assigns_col_index(self):
+        from kindleocr.ocr.paddle_ocr import _sort_reading_order
+        from kindleocr.ocr.engine import TextBlock, BoundingBox
+        blocks = [
+            TextBlock(type="body", text="L", confidence=0.9,
+                      bbox=BoundingBox(x=90, y=50, width=20, height=20)),
+            TextBlock(type="body", text="R", confidence=0.9,
+                      bbox=BoundingBox(x=690, y=50, width=20, height=20)),
+        ]
+        result = _sort_reading_order(blocks, max_cols=6)
+        assert result[0].col_index == 0
+        assert result[1].col_index == 1
+
 
 class TestPaddleOcrModule:
     """Tests that mock PaddleOCR so they run without the actual package."""
