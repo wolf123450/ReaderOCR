@@ -77,6 +77,7 @@ async fn start_batch_capture(
         region: region.clone(),
         created_at: existing.as_ref().map(|s| s.created_at.clone()).unwrap_or_else(|| ts.clone()),
         updated_at: ts.clone(),
+        pages: existing.map(|s| s.pages).unwrap_or_default(),
     };
     let _ = write_session(&config.output_dir, &session);
 
@@ -123,6 +124,7 @@ async fn start_batch_capture(
                     max_pages: config.max_pages,
                     region: region.clone(),
                     created_at: session.created_at.clone(),
+                    pages: session.pages.clone(),
                 };
                 let _ = write_session(&config.output_dir, &updated);
             }

@@ -22,6 +22,24 @@ export type BatchState = "idle" | "capturing" | "paused" | "stopped" | "complete
 
 export type CaptureType = "page" | "cover" | "illustration";
 
+export type PageType =
+  | "text"
+  | "cover"
+  | "illustration"
+  | "toc"
+  | "license"
+  | "blank"
+  | "chapter_start"
+  | "excluded";
+
+export type CaptureStatus =
+  | "ok"
+  | "needs_recapture"
+  | "missing"
+  | "placeholder";
+
+export type OcrStatus = "pending" | "running" | "done" | "error" | "skipped";
+
 export interface BatchCaptureConfig {
   outputDir: string;
   bookName: string;
@@ -44,8 +62,11 @@ export interface CapturedPage {
   imagePath: string;
   captureType: CaptureType;
   timestamp: number;
-  status: "ok" | "error";
+  captureStatus: CaptureStatus;
   errorMessage?: string;
+  pageType: PageType;
+  userNotes?: string;
+  ocrStatus: OcrStatus;
 }
 
 const MIN_REGION_SIZE = 50;
@@ -188,6 +209,10 @@ export const useCaptureStore = defineStore("capture", () => {
 
   function recordCapture(progress: CaptureProgress) {
     captureHistory.value.push(progress);
+    const inferredPageType: PageType =
+      nextCaptureType.value === "cover" ? "cover" :
+      nextCaptureType.value === "illustration" ? "illustration" :
+      "text";
     if (progress.status === "captured") {
       pagesCaptured.value = progress.pageNumber;
       capturedPages.value.push({
@@ -195,7 +220,9 @@ export const useCaptureStore = defineStore("capture", () => {
         imagePath: progress.imagePath,
         captureType: nextCaptureType.value,
         timestamp: Date.now(),
-        status: "ok",
+        captureStatus: "ok",
+        pageType: inferredPageType,
+        ocrStatus: "pending",
       });
     } else {
       capturedPages.value.push({
@@ -203,8 +230,10 @@ export const useCaptureStore = defineStore("capture", () => {
         imagePath: progress.imagePath,
         captureType: nextCaptureType.value,
         timestamp: Date.now(),
-        status: "error",
+        captureStatus: "needs_recapture",
         errorMessage: progress.errorMessage,
+        pageType: inferredPageType,
+        ocrStatus: "pending",
       });
     }
   }
@@ -225,6 +254,18 @@ export const useCaptureStore = defineStore("capture", () => {
   /** Restore the pages-captured count from a loaded session (for resume). */
   function restorePagesCaptured(count: number) {
     pagesCaptured.value = count;
+  }
+
+  /** Update the page type for a page by index (0-based in capturedPages). */
+  function setPageType(index: number, type: PageType): void {
+    if (index < 0 || index >= capturedPages.value.length) return;
+    capturedPages.value[index].pageType = type;
+  }
+
+  /** Update the capture status for a page by index. */
+  function setCaptureStatus(index: number, status: CaptureStatus): void {
+    if (index < 0 || index >= capturedPages.value.length) return;
+    capturedPages.value[index].captureStatus = status;
   }
 
   return {
@@ -262,5 +303,7 @@ export const useCaptureStore = defineStore("capture", () => {
     setBatchConfig,
     transitionTo,
     recordCapture,
+    setPageType,
+    setCaptureStatus,
   };
 });
