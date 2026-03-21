@@ -168,13 +168,18 @@ def _sort_reading_order(blocks: List[TextBlock], max_cols: int = 10) -> List[Tex
     if not blocks:
         return blocks
 
-    cx_list: List[float] = [b.bbox.x + b.bbox.width / 2.0 for b in blocks]
-    k = _best_column_count(cx_list, max_cols)
-    centers = _kmeans_1d(cx_list, k)
+    # Cluster on left-x (bbox.x) rather than center-x.  Every line in a
+    # given column starts at the same left margin, regardless of whether the
+    # line is a full-width paragraph line or a short hyphenated fragment.
+    # Center-x varies wildly for short vs. long lines in the same column,
+    # causing the algorithm to split one visual column into two clusters.
+    lx_list: List[float] = [float(b.bbox.x) for b in blocks]
+    k = _best_column_count(lx_list, max_cols)
+    centers = _kmeans_1d(lx_list, k)
 
     def _column_index(block: TextBlock) -> int:
-        cx = block.bbox.x + block.bbox.width / 2.0
-        return min(range(len(centers)), key=lambda j: abs(cx - centers[j]))
+        lx = float(block.bbox.x)
+        return min(range(len(centers)), key=lambda j: abs(lx - centers[j]))
 
     for block in blocks:
         block.col_index = _column_index(block)

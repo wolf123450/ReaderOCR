@@ -150,6 +150,7 @@ def _handle_ocr_page(params: Dict[str, Any]) -> Dict[str, Any]:
         image_path=params["image_path"],
         engine="ppocr",  # normalise to canonical name; alias already validated
         page_index=params.get("page_index", 0),
+        max_cols=int(params.get("max_cols", 10)),
     )
     result = ocr_page_paddle(p)
     return dataclasses.asdict(result)
