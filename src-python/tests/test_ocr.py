@@ -9,7 +9,6 @@ env-var setup are caught immediately instead of at runtime.
 from __future__ import annotations
 
 import dataclasses
-import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -377,13 +376,12 @@ class TestPaddleOcrInit:
         """PaddleOCR() must succeed with our current configuration."""
         assert real_ppocr is not None
 
-    def test_onednn_env_vars_set_before_model_loads(self, real_ppocr):
-        """OneDNN-disabling env vars must be present after _get_ppocr() runs."""
-        assert os.environ.get("FLAGS_use_mkldnn") == "0", (
-            "FLAGS_use_mkldnn must be '0' to disable OneDNN on CPU"
-        )
-        assert os.environ.get("PADDLE_DISABLE_MKLDNN") == "1", (
-            "PADDLE_DISABLE_MKLDNN must be '1' to disable OneDNN on CPU"
+    def test_paddle_cuda_available(self, real_ppocr):
+        """GPU build of PaddlePaddle must report CUDA as available."""
+        import paddle
+
+        assert paddle.device.cuda.device_count() > 0, (
+            "CUDA device not found — paddlepaddle-gpu may not be installed correctly"
         )
 
     def test_predict_method_exists_on_instance(self, real_ppocr):

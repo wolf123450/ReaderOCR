@@ -7,17 +7,9 @@ Falls back gracefully when PaddleOCR is not installed.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, List, Optional
 
 from kindleocr.ocr.engine import BoundingBox, OcrPageResult, OcrProcessPageParams, TextBlock
-
-# Ensure OneDNN/MKL-DNN flags are set before PaddlePaddle is imported.
-# These env vars tell PaddlePaddle's C++ layer to skip the OneDNN backend.
-# The primary API-level fix is enable_mkldnn=False in PaddleOCR() below;
-# the env vars provide a secondary safeguard for any early internal imports.
-os.environ.setdefault("FLAGS_use_mkldnn", "0")
-os.environ.setdefault("PADDLE_DISABLE_MKLDNN", "1")
 
 # ---------------------------------------------------------------------------
 # Lazy singleton
@@ -35,27 +27,32 @@ def _get_ppocr() -> Any:
         except ImportError as exc:
             raise ImportError(
                 "PaddleOCR is not installed. "
-                "Install with: pip install paddleocr paddlepaddle"
+                "Install with: pip install paddleocr paddlepaddle-gpu"
             ) from exc
+
+        import paddle
 
         # Silence verbose PaddleOCR/PaddleX log output via Python logging.
         for _log_name in ("paddleocr", "ppocr", "paddlex"):
             logging.getLogger(_log_name).setLevel(logging.WARNING)
 
-        # Disable OneDNN (MKL-DNN) via the PaddleOCR API.
-        # PaddlePaddle 3.x defaults to enable_mkldnn=True on CPU, which causes
-        # the PIR executor to compile OneDNN ops.  When those ops hit an
-        # unimplemented attribute converter (onednn_instruction.cc:118) the
-        # entire predict() call raises NotImplementedError.  Passing
-        # enable_mkldnn=False tells PaddleX to call config.disable_mkldnn() so
-        # the model is compiled with plain CPU ops instead.
+        # Use GPU if available, fall back to CPU otherwise.
+        # On CPU: enable_mkldnn=False avoids a PaddlePaddle 3.x PIR bug where
+        # OneDNN ops hit an unimplemented attribute converter at runtime.
+        if paddle.device.cuda.device_count() > 0:
+            device = "gpu"
+            extra_kwargs: dict = {}
+        else:
+            device = "cpu"
+            extra_kwargs = {"enable_mkldnn": False}
+
         _ppocr_instance = PaddleOCR(
             lang="en",
-            device="cpu",
-            enable_mkldnn=False,
+            device=device,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
+            **extra_kwargs,
         )
     return _ppocr_instance
 
