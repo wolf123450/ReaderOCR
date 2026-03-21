@@ -8,9 +8,14 @@ import RegionSelector from "@/components/RegionSelector.vue";
 import ProgressTracker from "@/components/ProgressTracker.vue";
 import SidecarStatus from "@/components/SidecarStatus.vue";
 import CapturedPagesPanel from "@/components/CapturedPagesPanel.vue";
+import CaptureConfigPanel from "@/components/CaptureConfigPanel.vue";
 import { useCaptureStore, type CaptureProgress, type CaptureType } from "@/stores/capture";
+import { useUiStore } from "@/stores/ui";
 
 const store = useCaptureStore();
+const uiStore = useUiStore();
+
+let collapseTimer: ReturnType<typeof setTimeout> | null = null;
 
 const delayMs = ref(1500);
 const maxPages = ref<number | null>(null);
@@ -40,7 +45,11 @@ let unlistenStopped: UnlistenFn | null = null;
 
 onMounted(async () => {
   unlistenProgress = await listen<CaptureProgress>("capture-progress", (event) => {
+    const isFirst = store.capturedPages.length === 0;
     store.recordCapture(event.payload);
+    if (isFirst) {
+      collapseTimer = setTimeout(() => uiStore.setCaptureConfigCollapsed(true), 2000);
+    }
   });
   unlistenDuplicate = await listen("capture-duplicate-detected", () => {
     if (store.batchState === "capturing" || store.batchState === "paused") {
@@ -64,6 +73,7 @@ onUnmounted(() => {
   unlistenDuplicate?.();
   unlistenCompleted?.();
   unlistenStopped?.();
+  if (collapseTimer !== null) clearTimeout(collapseTimer);
 });
 
 const selectionSummary = computed(() => {
@@ -109,6 +119,7 @@ async function tryLoadSession(dir: string) {
       store.restorePagesCaptured(session.pagesCaptured);
       if (session.pagesCaptured > 0) {
         store.transitionTo("stopped");
+        uiStore.setCaptureConfigCollapsed(true);
       }
       sessionLoaded.value = true;
     } else {
@@ -200,6 +211,12 @@ async function stopCapture() {
 function resetCapture() {
   store.transitionTo("idle");
   sessionLoaded.value = false;
+  uiStore.setCaptureConfigCollapsed(false);
+}
+
+async function handlePauseAndExpand() {
+  await pauseCapture();
+  uiStore.setCaptureConfigCollapsed(false);
 }
 
 function continueCapture() {
@@ -214,9 +231,11 @@ function continueCapture() {
       <SidecarStatus />
     </div>
 
-    <WindowPicker />
+    <CaptureConfigPanel @pause-and-expand="handlePauseAndExpand">
+      <WindowPicker />
 
-    <RegionSelector />
+      <RegionSelector />
+    </CaptureConfigPanel>
 
     <!-- Region confirmation banner -->
     <div v-if="store.region && store.selectedWindow && !store.isCapturing" class="region-confirmed">

@@ -13,6 +13,9 @@ export const useUiStore = defineStore("ui", () => {
   // Tracks pages with OCR results; wired up by step 44 OCR workflow
   const ocrPageCount = ref(0);
 
+  // Step 45: whether capture config (window picker + region selector) is collapsed
+  const captureConfigCollapsed = ref(false);
+
   const captureStore = useCaptureStore();
 
   function isTabEnabled(tab: TopTab): boolean {
@@ -55,16 +58,22 @@ export const useUiStore = defineStore("ui", () => {
     ocrPageCount.value = count;
   }
 
+  function setCaptureConfigCollapsed(value: boolean): void {
+    captureConfigCollapsed.value = value;
+  }
+
   return {
     activeTab,
     activeReviewSubtab,
     selectedPageIndex,
     ocrPageCount,
+    captureConfigCollapsed,
     isTabEnabled,
     isSubtabEnabled,
     setTab,
     setSubtab,
     selectPage,
     setOcrPageCount,
+    setCaptureConfigCollapsed,
   };
 });

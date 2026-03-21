@@ -87,3 +87,37 @@ describe("ui store — Step 39", () => {
     expect(ui.activeReviewSubtab).toBe("ocr");
   });
 });
+
+describe("ui store — Step 45 capture config collapse", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("45-1. initial state: captureConfigCollapsed = false", () => {
+    const ui = useUiStore();
+    expect(ui.captureConfigCollapsed).toBe(false);
+  });
+
+  it("45-2. setCaptureConfigCollapsed(true) → state changes to true", () => {
+    const ui = useUiStore();
+    ui.setCaptureConfigCollapsed(true);
+    expect(ui.captureConfigCollapsed).toBe(true);
+  });
+
+  it("45-3. setCaptureConfigCollapsed(false) after true → reverts", () => {
+    const ui = useUiStore();
+    ui.setCaptureConfigCollapsed(true);
+    ui.setCaptureConfigCollapsed(false);
+    expect(ui.captureConfigCollapsed).toBe(false);
+  });
+
+  it("45-4. captureConfigCollapsed is independent of tab state", () => {
+    const ui = useUiStore();
+    const capture = useCaptureStore();
+    capture.capturedPages.push(makePage(1));
+    ui.setCaptureConfigCollapsed(true);
+    expect(ui.captureConfigCollapsed).toBe(true);
+    // Tab state unaffected
+    expect(ui.activeTab).toBe("capture");
+  });
+});
