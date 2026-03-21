@@ -61,45 +61,121 @@ def _get_ppocr() -> Any:
 # Reading-order helpers
 # ---------------------------------------------------------------------------
 
-def _sort_reading_order(blocks: List[TextBlock]) -> List[TextBlock]:
-    """Sort blocks into reading order using a column-aware heuristic.
+def _kmeans_1d(cx_list: List[float], k: int) -> List[float]:
+    """Fit *k* cluster centres to *cx_list* using 1-D k-means.
 
-    Works on both single- and multi-column layouts:
-    - Detects column boundaries by finding large horizontal gaps between
-      block centres.
-    - Within each column, blocks are sorted top-to-bottom by their y
-      coordinate.
-    - Columns themselves are ordered left-to-right.
+    Returns centres sorted ascending.  Converges in at most 30 iterations.
+    When k >= n the individual values are returned as their own centres.
+    """
+    n = len(cx_list)
+    k = min(k, n)
+    sx = sorted(cx_list)
+    # Initialise at evenly-spaced quantile positions.
+    # Midpoint-quantile init: place one center in the middle of each equal
+    # partition of the sorted data.  This prevents two centers landing in the
+    # same cluster (a failure mode of boundary-quantile init when tight
+    # clusters are much smaller than inter-cluster gaps).
+    centers: List[float] = [sx[int((2 * i + 1) / (2 * k) * (n - 1))] for i in range(k)]
 
-    The gap threshold is adaptive: a gap must be at least `min_gap_ratio`
-    times the median block width before it is treated as a column separator.
-    This prevents narrow inter-word spaces from being mistaken for columns.
+    for _ in range(30):
+        clusters: List[List[float]] = [[] for _ in range(k)]
+        for cx in cx_list:
+            j = min(range(k), key=lambda j, c=cx: abs(c - centers[j]))
+            clusters[j].append(cx)
+        new_centers: List[float] = [
+            sum(cl) / len(cl) if cl else centers[i]
+            for i, cl in enumerate(clusters)
+        ]
+        if new_centers == centers:
+            break
+        centers = new_centers
+
+    return sorted(centers)
+
+
+def _total_sq_error(cx_list: List[float], centers: List[float]) -> float:
+    """Sum of squared distances from each value to its nearest centre."""
+    return sum(min((cx - c) ** 2 for c in centers) for cx in cx_list)
+
+
+def _best_column_count(cx_list: List[float], max_cols: int) -> int:
+    """Choose the number of columns using the Calinski-Harabasz criterion.
+
+    For k = 2 … min(max_cols, n), fits k clusters via 1-D k-means and scores
+    with the variance-ratio (CH) index::
+
+        CH(k) = (BSS / (k - 1)) / (WSS / (N - k))
+
+    where BSS is the between-cluster sum of squares and WSS is the
+    within-cluster sum of squares.  A higher score is better.  CH is
+    scale-invariant so it works correctly whether blocks are 10 px or
+    1000 px apart.  Returns 1 when fewer than 2 blocks exist, all
+    center-x values coincide, or max_cols == 1.
+    """
+    n = len(cx_list)
+    if n < 2:
+        return 1
+
+    # With only 2 blocks CH is undefined (N–k = 0 for k = 2).  Use a simple
+    # distance check instead: 50 px is a reasonable minimum column gap.
+    if n == 2:
+        return 2 if abs(cx_list[0] - cx_list[1]) >= 50.0 else 1
+
+    mean_cx = sum(cx_list) / n
+    total_ss = sum((cx - mean_cx) ** 2 for cx in cx_list)
+    if total_ss == 0.0:  # all blocks on the same vertical line
+        return 1
+
+    # Require N-k >= 2 for n >= 5 to prevent the k=n-1 case from getting a
+    # spuriously high CH due to a near-zero denominator (only 1 residual df).
+    min_resid = 2 if n >= 5 else 1
+
+    best_k = 1
+    best_ch = 0.0
+    # Cap k at n // 2 so every cluster has >= 2 samples on average.
+    # This prevents CH from being inflated when n-k is tiny (e.g.
+    # k=n-1 gives n-k=1, pushing CH extremely high via a near-zero denominator).
+    for k in range(2, min(max_cols, n // 2) + 1):
+        centers = _kmeans_1d(cx_list, k)
+        wss = _total_sq_error(cx_list, centers)
+        # Check wss BEFORE the residual guard: a perfect k-cluster fit is
+        # always optimal and does not require CH computation.
+        if wss == 0.0 and n - k >= 1:
+            return k
+        if n - k < min_resid:
+            continue
+        bss = total_ss - wss
+        ch = (bss / (k - 1)) / (wss / (n - k))
+        if ch > best_ch:
+            best_ch = ch
+            best_k = k
+
+    return best_k
+
+
+def _sort_reading_order(blocks: List[TextBlock], max_cols: int = 10) -> List[TextBlock]:
+    """Sort blocks into reading order using k-means column detection.
+
+    Automatically determines the best number of columns (up to *max_cols*)
+    using the Calinski-Harabasz criterion: 1-D k-means is fitted for
+    k = 1 ... max_cols and the model with the highest variance-ratio score
+    is chosen.
+
+    Each block's ``col_index`` field is updated in-place so the frontend
+    debug view can colour-code by column.  Columns run left-to-right;
+    within each column blocks are ordered top-to-bottom then left-to-right.
     """
     if not blocks:
         return blocks
 
-    # Compute centre-x for every block.
-    centres = sorted(set(b.bbox.x + b.bbox.width // 2 for b in blocks))
-
-    # Adaptive gap threshold: 60 % of the median block width, minimum 20 px.
-    median_width: float = sorted(b.bbox.width for b in blocks)[len(blocks) // 2]
-    min_gap: float = max(20.0, median_width * 0.6)
-
-    # Find column boundary positions (x values where a large gap occurs).
-    boundaries: List[float] = []
-    for i in range(1, len(centres)):
-        if centres[i] - centres[i - 1] >= min_gap:
-            boundaries.append((centres[i - 1] + centres[i]) / 2.0)
+    cx_list: List[float] = [b.bbox.x + b.bbox.width / 2.0 for b in blocks]
+    k = _best_column_count(cx_list, max_cols)
+    centers = _kmeans_1d(cx_list, k)
 
     def _column_index(block: TextBlock) -> int:
-        cx = block.bbox.x + block.bbox.width // 2
-        for col, boundary in enumerate(boundaries):
-            if cx < boundary:
-                return col
-        return len(boundaries)  # last column
+        cx = block.bbox.x + block.bbox.width / 2.0
+        return min(range(len(centers)), key=lambda j: abs(cx - centers[j]))
 
-    # Annotate each block with its computed column index so callers
-    # (and the frontend debug view) can colour-code by column.
     for block in blocks:
         block.col_index = _column_index(block)
 
@@ -156,20 +232,7 @@ def ocr_page_paddle(params: OcrProcessPageParams) -> OcrPageResult:
             )
         )
 
-    # Reading order: column-aware sort.
-    #
-    # A simple (y, x) sort breaks on multi-column layouts: a block in the
-    # right column at y=100 would appear before a left-column block at y=200,
-    # even though readers encounter the left column first.
-    #
-    # Algorithm:
-    # 1. Compute the horizontal center of each block.
-    # 2. Sort those centers and look for the largest gap(s).  A gap wider than
-    #    `column_gap_threshold` separates distinct columns.
-    # 3. Assign each block to a column by its center-x.
-    # 4. Sort blocks by (column_index, y).  Within a single-column page this
-    #    degenerates to a pure y sort, preserving the previous behaviour.
-    blocks = _sort_reading_order(blocks)
+    blocks = _sort_reading_order(blocks, max_cols=params.max_cols)
 
     raw_text = "\n".join(b.text for b in blocks)
     avg_conf = sum(b.confidence for b in blocks) / len(blocks) if blocks else 0.0

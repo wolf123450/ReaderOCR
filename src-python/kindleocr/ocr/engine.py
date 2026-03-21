@@ -40,6 +40,7 @@ class OcrProcessPageParams:
     image_path: str
     engine: str = "ppocr"       # "ppocr" | "ppocr_vl"
     page_index: int = 0
+    max_cols: int = 10          # maximum columns to consider (1 = force single column)
 
 
 # ---------------------------------------------------------------------------

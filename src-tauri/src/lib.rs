@@ -314,6 +314,7 @@ async fn ocr_page(
     page_number: u32,
     engine: String,
     language: String,
+    max_cols: u32,
     client: tauri::State<'_, Mutex<SidecarClient>>,
 ) -> Result<OcrPageResponse, String> {
     // block_in_place tells the tokio runtime that this thread is about to do
@@ -329,6 +330,7 @@ async fn ocr_page(
                 "engine": engine,
                 "language": language,
                 "page_index": page_number.saturating_sub(1),
+                "max_cols": max_cols,
             }),
         )?;
         Ok(OcrPageResponse {
