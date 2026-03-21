@@ -1,5 +1,5 @@
 use image::DynamicImage;
-use image_hasher::{HashAlg, HasherConfig};
+use image_hasher::{HashAlg, HasherConfig, ImageHash};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -23,16 +23,31 @@ pub struct DuplicateCheckResult {
     pub hash_b: String,
 }
 
-/// Compute a perceptual hash for an image.
-fn compute_phash(img: &DynamicImage) -> image_hasher::ImageHash {
-    let hasher = HasherConfig::new()
+fn make_hasher() -> image_hasher::Hasher {
+    HasherConfig::new()
         .hash_alg(HashAlg::DoubleGradient)
         .hash_size(16, 16)
-        .to_hasher();
-    hasher.hash_image(img)
+        .to_hasher()
 }
 
-/// Check whether two images are perceptual duplicates.
+/// Compute a perceptual hash for an in-memory image.
+pub fn hash_image(img: &DynamicImage) -> ImageHash {
+    make_hasher().hash_image(img)
+}
+
+/// Compare two pre-computed hashes. Returns a result struct.
+pub fn compare_hashes(hash_a: &ImageHash, hash_b: &ImageHash, threshold: u32) -> DuplicateCheckResult {
+    let hamming_distance = hash_a.dist(hash_b);
+    DuplicateCheckResult {
+        is_duplicate: hamming_distance <= threshold,
+        hamming_distance,
+        hash_a: hash_a.to_base64(),
+        hash_b: hash_b.to_base64(),
+    }
+}
+
+/// Check whether two images are perceptual duplicates (file-based, kept for
+/// the Tauri command and tests that work with paths).
 pub fn check_duplicate(req: &DuplicateCheckRequest) -> Result<DuplicateCheckResult, String> {
     let path_a = Path::new(&req.image_path_a);
     let path_b = Path::new(&req.image_path_b);
@@ -47,17 +62,10 @@ pub fn check_duplicate(req: &DuplicateCheckRequest) -> Result<DuplicateCheckResu
     let img_a = image::open(path_a).map_err(|e| format!("Failed to open {}: {e}", req.image_path_a))?;
     let img_b = image::open(path_b).map_err(|e| format!("Failed to open {}: {e}", req.image_path_b))?;
 
-    let hash_a = compute_phash(&img_a);
-    let hash_b = compute_phash(&img_b);
+    let hash_a = hash_image(&img_a);
+    let hash_b = hash_image(&img_b);
 
-    let hamming_distance = hash_a.dist(&hash_b);
-
-    Ok(DuplicateCheckResult {
-        is_duplicate: hamming_distance <= req.threshold,
-        hamming_distance,
-        hash_a: hash_a.to_base64(),
-        hash_b: hash_b.to_base64(),
-    })
+    Ok(compare_hashes(&hash_a, &hash_b, req.threshold))
 }
 
 #[cfg(test)]
