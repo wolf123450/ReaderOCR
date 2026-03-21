@@ -242,6 +242,30 @@ class TestPaddleOcrModule:
         finally:
             mod._ppocr_instance = original
 
+    def test_ppocr_constructor_called_with_valid_3x_args(self):
+        """PaddleOCR() is called with only known-valid 3.x kwargs.
+
+        This test must be updated whenever the constructor signature changes so
+        invalid arguments (like the removed show_log / use_gpu / use_angle_cls)
+        are caught at test time rather than at runtime.
+        """
+        import kindleocr.ocr.paddle_ocr as mod
+
+        original = mod._ppocr_instance
+        mod._ppocr_instance = None
+        try:
+            with patch("paddleocr.PaddleOCR") as MockPaddleOCR:
+                MockPaddleOCR.return_value = MagicMock()
+                mod._get_ppocr()
+                MockPaddleOCR.assert_called_once_with(
+                    lang="en",
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                )
+        finally:
+            mod._ppocr_instance = original
+
 
 # ---------------------------------------------------------------------------
 # Server integration (JSON-RPC handler) tests

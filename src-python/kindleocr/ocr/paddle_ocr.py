@@ -6,6 +6,7 @@ Falls back gracefully when PaddleOCR is not installed.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, List, Optional
 
 from kindleocr.ocr.engine import BoundingBox, OcrPageResult, OcrProcessPageParams, TextBlock
@@ -30,14 +31,16 @@ def _get_ppocr() -> Any:
             ) from exc
 
         # Disable heavy document preprocessing — not needed for book page images.
-        # show_log=False suppresses verbose model-loading output.
         # device is omitted to let PaddlePaddle auto-select GPU/CPU.
+        # Silence verbose PaddleOCR/PaddleX log output via Python logging.
+        for _log_name in ("paddleocr", "ppocr", "paddlex"):
+            logging.getLogger(_log_name).setLevel(logging.WARNING)
+
         _ppocr_instance = PaddleOCR(
             lang="en",
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
-            show_log=False,
         )
     return _ppocr_instance
 
