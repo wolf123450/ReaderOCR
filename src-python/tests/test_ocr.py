@@ -1,11 +1,15 @@
 """Tests for OCR engine (Step 16).
 
-Tests that require PaddleOCR are automatically skipped when it is not installed.
+Unit tests in TestPaddleOcrModule mock _get_ppocr (our own function) to test
+parsing logic in isolation.  Integration tests in TestPaddleOcrInit call the
+real PaddleOCR constructor so that invalid constructor arguments and missing
+env-var setup are caught immediately instead of at runtime.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -39,6 +43,30 @@ def _make_sample_result(n_blocks: int = 3) -> OcrPageResult:
     raw = "\n".join(b.text for b in blocks)
     avg = sum(b.confidence for b in blocks) / len(blocks)
     return OcrPageResult(page_index=0, blocks=blocks, raw_text=raw, avg_confidence=avg)
+
+
+# ---------------------------------------------------------------------------
+# Session fixture — real PaddleOCR initialisation (not mocked)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def real_ppocr():
+    """Initialise a real PaddleOCR instance once for the entire test session.
+
+    The constructor is NOT mocked.  If our arguments or env-var setup are
+    wrong, this fixture fails and every test that depends on it is reported as
+    an error — exactly when we want to hear about it, not at runtime.
+    """
+    import kindleocr.ocr.paddle_ocr as mod
+
+    saved = mod._ppocr_instance
+    mod._ppocr_instance = None  # force a fresh initialisation
+    try:
+        instance = mod._get_ppocr()  # real call — invalid kwargs raise here
+    finally:
+        mod._ppocr_instance = saved  # restore so other tests aren't affected
+
+    yield instance
 
 
 # ---------------------------------------------------------------------------
@@ -110,18 +138,17 @@ class TestPaddleOcrModule:
 
     def _mock_paddle_result(self):
         """Build a fake PaddleOCR 3.x predict() output structure."""
-        # predict() returns a list of dicts: [{"res": {"rec_texts": [...], ...}}]
+        # predict() returns a list of OCRResult-like dicts with rec_texts,
+        # rec_scores, rec_polys at the top level — no nested 'res' wrapper.
         return [
             {
-                "res": {
-                    "rec_texts": ["Hello world", "Second line", "Third line"],
-                    "rec_scores": [0.97, 0.88, 0.75],
-                    "rec_polys": [
-                        [[10, 20], [110, 20], [110, 40], [10, 40]],
-                        [[10, 50], [200, 50], [200, 70], [10, 70]],
-                        [[10, 80], [150, 80], [150, 100], [10, 100]],
-                    ],
-                }
+                "rec_texts": ["Hello world", "Second line", "Third line"],
+                "rec_scores": [0.97, 0.88, 0.75],
+                "rec_polys": [
+                    [[10, 20], [110, 20], [110, 40], [10, 40]],
+                    [[10, 50], [200, 50], [200, 70], [10, 70]],
+                    [[10, 80], [150, 80], [150, 100], [10, 100]],
+                ],
             }
         ]
 
@@ -145,15 +172,13 @@ class TestPaddleOcrModule:
         # Out-of-order y coordinates
         raw = [
             {
-                "res": {
-                    "rec_texts": ["Third", "First", "Second"],
-                    "rec_scores": [0.9, 0.9, 0.9],
-                    "rec_polys": [
-                        [[10, 80], [110, 80], [110, 100], [10, 100]],
-                        [[10, 20], [110, 20], [110, 40], [10, 40]],
-                        [[10, 50], [110, 50], [110, 70], [10, 70]],
-                    ],
-                }
+                "rec_texts": ["Third", "First", "Second"],
+                "rec_scores": [0.9, 0.9, 0.9],
+                "rec_polys": [
+                    [[10, 80], [110, 80], [110, 100], [10, 100]],
+                    [[10, 20], [110, 20], [110, 40], [10, 40]],
+                    [[10, 50], [110, 50], [110, 70], [10, 70]],
+                ],
             }
         ]
         mock_ocr = MagicMock()
@@ -184,14 +209,12 @@ class TestPaddleOcrModule:
 
         raw = [
             {
-                "res": {
-                    "rec_texts": ["A", "B"],
-                    "rec_scores": [0.8, 0.6],
-                    "rec_polys": [
-                        [[0, 0], [100, 0], [100, 20], [0, 20]],
-                        [[0, 30], [100, 30], [100, 50], [0, 50]],
-                    ],
-                }
+                "rec_texts": ["A", "B"],
+                "rec_scores": [0.8, 0.6],
+                "rec_polys": [
+                    [[0, 0], [100, 0], [100, 20], [0, 20]],
+                    [[0, 30], [100, 30], [100, 50], [0, 50]],
+                ],
             }
         ]
         mock_ocr = MagicMock()
@@ -242,32 +265,6 @@ class TestPaddleOcrModule:
         finally:
             mod._ppocr_instance = original
 
-    def test_ppocr_constructor_called_with_valid_3x_args(self):
-        """PaddleOCR() is called with only known-valid 3.x kwargs.
-
-        This test must be updated whenever the constructor signature changes so
-        invalid arguments (like the removed show_log / use_gpu / use_angle_cls)
-        are caught at test time rather than at runtime.
-        """
-        import kindleocr.ocr.paddle_ocr as mod
-
-        original = mod._ppocr_instance
-        mod._ppocr_instance = None
-        try:
-            with patch("paddleocr.PaddleOCR") as MockPaddleOCR:
-                MockPaddleOCR.return_value = MagicMock()
-                mod._get_ppocr()
-                MockPaddleOCR.assert_called_once_with(
-                    lang="en",
-                    device="cpu",
-                    use_doc_orientation_classify=False,
-                    use_doc_unwarping=False,
-                    use_textline_orientation=False,
-                )
-        finally:
-            mod._ppocr_instance = original
-
-
 # ---------------------------------------------------------------------------
 # Server integration (JSON-RPC handler) tests
 # ---------------------------------------------------------------------------
@@ -282,46 +279,108 @@ class TestOcrServerHandler:
         assert "ocr_page" in server._methods
 
     def test_ocr_page_handler_uses_paddle(self, tmp_path):
-        """Handler calls ocr_page_paddle and returns a serialisable dict."""
+        """Handler calls ocr_page_paddle and returns a serialisable dict.
+
+        We mock kindleocr.server.ocr_page_paddle — our own function — rather
+        than anything inside the external PaddleOCR library.  This tests only
+        that the JSON-RPC wiring is correct, not PaddleOCR internals.
+        """
         from kindleocr.server import create_server
+        from kindleocr.ocr.engine import OcrPageResult, TextBlock, BoundingBox
         import json
 
-        # Create a tiny white test image.
-        img = Image.new("RGB", (50, 50), 255)
-        img_path = str(tmp_path / "test.png")
-        img.save(img_path)
+        fake_result = OcrPageResult(
+            page_index=0,
+            blocks=[
+                TextBlock(
+                    type="body",
+                    text="Test text",
+                    confidence=0.92,
+                    bbox=BoundingBox(x=5, y=5, width=40, height=15),
+                )
+            ],
+            raw_text="Test text",
+            avg_confidence=0.92,
+        )
 
-        raw = [
-            {
-                "res": {
-                    "rec_texts": ["Test text"],
-                    "rec_scores": [0.92],
-                    "rec_polys": [[[5, 5], [45, 5], [45, 20], [5, 20]]],
-                }
-            }
-        ]
-        mock_ocr = MagicMock()
-        mock_ocr.predict.return_value = raw
-
-        import kindleocr.ocr.paddle_ocr as paddle_mod
-        original = paddle_mod._ppocr_instance
-        paddle_mod._ppocr_instance = mock_ocr
-        try:
+        with patch("kindleocr.server.ocr_page_paddle", return_value=fake_result) as mock_fn:
             server = create_server()
             resp = server.handle_message(
                 json.dumps({
                     "jsonrpc": "2.0",
                     "id": 42,
                     "method": "ocr_page",
-                    "params": {"image_path": img_path, "page_index": 0},
+                    "params": {"image_path": "/fake/img.png", "page_index": 0},
                 })
             )
-        finally:
-            paddle_mod._ppocr_instance = original
 
+        mock_fn.assert_called_once()
         assert "result" in resp
         assert resp["result"]["blocks"][0]["text"] == "Test text"
         assert resp["result"]["page_index"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: real PaddleOCR constructor (no mock)
+# ---------------------------------------------------------------------------
+
+class TestPaddleOcrInit:
+    """Integration tests that actually instantiate PaddleOCR with our config.
+
+    These tests use the ``real_ppocr`` session fixture which calls
+    ``_get_ppocr()`` without mocking the constructor.  If we pass an invalid
+    argument (e.g. the removed ``show_log`` or ``use_gpu``), the fixture fails
+    and every test here is reported as an error rather than silently passing.
+
+    ``predict()`` is mocked so no real images or GPU are needed.
+    """
+
+    def test_get_ppocr_initialises_without_error(self, real_ppocr):
+        """PaddleOCR() must succeed with our current configuration."""
+        assert real_ppocr is not None
+
+    def test_onednn_env_vars_set_before_model_loads(self, real_ppocr):
+        """OneDNN-disabling env vars must be present after _get_ppocr() runs."""
+        assert os.environ.get("FLAGS_use_mkldnn") == "0", (
+            "FLAGS_use_mkldnn must be '0' to disable OneDNN on CPU"
+        )
+        assert os.environ.get("PADDLE_DISABLE_MKLDNN") == "1", (
+            "PADDLE_DISABLE_MKLDNN must be '1' to disable OneDNN on CPU"
+        )
+
+    def test_predict_method_exists_on_instance(self, real_ppocr):
+        """The real PaddleOCR instance must expose a predict() method."""
+        assert callable(getattr(real_ppocr, "predict", None)), (
+            "PaddleOCR instance has no predict() — API may have changed again"
+        )
+
+    def test_ocr_page_paddle_full_flow(self, real_ppocr):
+        """Full ocr_page_paddle() flow: real init, predict() mocked at API boundary."""
+        import kindleocr.ocr.paddle_ocr as mod
+        from kindleocr.ocr.paddle_ocr import ocr_page_paddle
+
+        mock_result = [
+            {
+                "rec_texts": ["Hello world"],
+                "rec_scores": [0.95],
+                "rec_polys": [[[10, 20], [110, 20], [110, 40], [10, 40]]],
+            }
+        ]
+
+        saved = mod._ppocr_instance
+        mod._ppocr_instance = real_ppocr
+        try:
+            with patch.object(real_ppocr, "predict", return_value=mock_result):
+                result = ocr_page_paddle(
+                    OcrProcessPageParams(image_path="/fake/img.png", page_index=2)
+                )
+        finally:
+            mod._ppocr_instance = saved
+
+        assert result.page_index == 2
+        assert len(result.blocks) == 1
+        assert result.blocks[0].text == "Hello world"
+        assert abs(result.avg_confidence - 0.95) < 1e-9
 
 
 # ---------------------------------------------------------------------------
