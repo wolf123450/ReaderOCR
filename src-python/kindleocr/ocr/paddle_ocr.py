@@ -7,6 +7,7 @@ Falls back gracefully when PaddleOCR is not installed.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, List, Optional
 
 from kindleocr.ocr.engine import BoundingBox, OcrPageResult, OcrProcessPageParams, TextBlock
@@ -31,13 +32,19 @@ def _get_ppocr() -> Any:
             ) from exc
 
         # Disable heavy document preprocessing — not needed for book page images.
-        # device is omitted to let PaddlePaddle auto-select GPU/CPU.
         # Silence verbose PaddleOCR/PaddleX log output via Python logging.
         for _log_name in ("paddleocr", "ppocr", "paddlex"):
             logging.getLogger(_log_name).setLevel(logging.WARNING)
 
+        # Disable OneDNN (MKL-DNN) backend — it has unimplemented ops in the
+        # current PaddlePaddle 3.x PIR compiler on CPU and causes runtime errors
+        # like "ConvertPirAttribute2RuntimeAttribute not support ArrayAttribute".
+        os.environ.setdefault("FLAGS_use_mkldnn", "0")
+        os.environ.setdefault("PADDLE_DISABLE_MKLDNN", "1")
+
         _ppocr_instance = PaddleOCR(
             lang="en",
+            device="cpu",
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,

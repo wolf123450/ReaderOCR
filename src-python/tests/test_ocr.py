@@ -259,6 +259,7 @@ class TestPaddleOcrModule:
                 mod._get_ppocr()
                 MockPaddleOCR.assert_called_once_with(
                     lang="en",
+                    device="cpu",
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
                     use_textline_orientation=False,
