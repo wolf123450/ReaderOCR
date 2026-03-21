@@ -8,7 +8,7 @@ const pages = computed(() => [...store.capturedPages].reverse());
 
 const stats = computed(() => {
   const total = store.capturedPages.length;
-  const ok = store.capturedPages.filter((p) => p.status === "ok").length;
+  const ok = store.capturedPages.filter((p) => p.captureStatus === "ok").length;
   const errors = total - ok;
   const covers = store.capturedPages.filter((p) => p.captureType === "cover").length;
   const illustrations = store.capturedPages.filter((p) => p.captureType === "illustration").length;
@@ -45,12 +45,12 @@ function fileName(path: string): string {
         v-for="page in pages"
         :key="page.pageNumber"
         class="page-item"
-        :class="{ error: page.status === 'error' }"
+        :class="{ error: page.captureStatus === 'needs_recapture' }"
       >
         <span class="page-num">#{{ page.pageNumber }}</span>
         <span class="page-type">{{ typeLabel(page.captureType) }}</span>
         <span class="page-file" :title="page.imagePath">{{ fileName(page.imagePath) }}</span>
-        <span v-if="page.status === 'error'" class="page-err" :title="page.errorMessage">
+        <span v-if="page.captureStatus === 'needs_recapture'" class="page-err" :title="page.errorMessage">
           ✗ {{ page.errorMessage }}
         </span>
         <span v-else class="page-ok">✓</span>

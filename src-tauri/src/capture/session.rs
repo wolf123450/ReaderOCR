@@ -13,6 +13,32 @@ pub struct SessionRegion {
     pub height: u32,
 }
 
+/// Per-page metadata stored in the session file.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPage {
+    pub page_number: u32,
+    pub image_path: String,
+    pub timestamp: i64,
+    /// "ok" | "needs_recapture" | "missing" | "placeholder"
+    #[serde(default = "default_capture_status")]
+    pub capture_status: String,
+    /// "text" | "cover" | "illustration" | "toc" | "license" | "blank" | "chapter_start" | "excluded"
+    #[serde(default = "default_page_type")]
+    pub page_type: String,
+    /// "pending" | "running" | "done" | "error" | "skipped"
+    #[serde(default = "default_ocr_status")]
+    pub ocr_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+fn default_capture_status() -> String { "ok".to_string() }
+fn default_page_type() -> String { "text".to_string() }
+fn default_ocr_status() -> String { "pending".to_string() }
+
 /// Session metadata file written to the capture output directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +63,9 @@ pub struct SessionData {
     pub created_at: String,
     /// ISO-8601 timestamp when the session was last updated.
     pub updated_at: String,
+    /// Per-page metadata; absent in legacy sessions (defaults to empty vec).
+    #[serde(default)]
+    pub pages: Vec<SessionPage>,
 }
 
 /// Return the path to the session file inside `dir`.
@@ -145,6 +174,7 @@ mod tests {
             region: sample_region(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
+            pages: vec![],
         }
     }
 
@@ -189,5 +219,68 @@ mod tests {
     fn session_path_appends_filename() {
         let p = session_path("C:\\Books\\MyBook");
         assert!(p.ends_with(SESSION_FILENAME));
+    }
+
+    // --- Step 42: SessionPage serde tests ---
+
+    fn sample_page() -> SessionPage {
+        SessionPage {
+            page_number: 1,
+            image_path: "book/page-001.png".to_string(),
+            timestamp: 1700000000,
+            capture_status: "ok".to_string(),
+            page_type: "text".to_string(),
+            ocr_status: "pending".to_string(),
+            user_notes: None,
+            error_message: None,
+        }
+    }
+
+    #[test]
+    fn session_page_round_trip() {
+        let page = sample_page();
+        let json = serde_json::to_string(&page).unwrap();
+        let back: SessionPage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, page);
+    }
+
+    #[test]
+    fn session_page_defaults_when_fields_absent() {
+        // Legacy JSON missing capture_status, page_type, ocr_status
+        let json = r#"{"pageNumber":1,"imagePath":"book/page-001.png","timestamp":1700000000}"#;
+        let page: SessionPage = serde_json::from_str(json).unwrap();
+        assert_eq!(page.capture_status, "ok");
+        assert_eq!(page.page_type, "text");
+        assert_eq!(page.ocr_status, "pending");
+    }
+
+    #[test]
+    fn session_data_legacy_json_gets_empty_pages() {
+        // Old session JSON with no "pages" field → default to empty vec
+        let legacy = r#"{
+            "bookName": "Old Book",
+            "outputDir": "C:\\Old",
+            "filePrefix": "page",
+            "pageTurnKey": "Right",
+            "delayBetweenMs": 1500,
+            "maxPages": null,
+            "pagesCaptured": 5,
+            "region": {"x":0,"y":0,"width":800,"height":600},
+            "createdAt": "2025-01-01T00:00:00Z",
+            "updatedAt": "2025-01-01T00:00:00Z"
+        }"#;
+        let data: SessionData = serde_json::from_str(legacy).unwrap();
+        assert_eq!(data.book_name, "Old Book");
+        assert!(data.pages.is_empty());
+    }
+
+    #[test]
+    fn session_data_with_pages_round_trip() {
+        let mut data = sample_session();
+        data.pages.push(sample_page());
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let back: SessionData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.pages.len(), 1);
+        assert_eq!(back.pages[0].page_type, "text");
     }
 }

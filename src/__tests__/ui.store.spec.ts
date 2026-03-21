@@ -9,7 +9,9 @@ function makePage(n: number): CapturedPage {
     imagePath: `/sessions/book/page-${String(n).padStart(3, "0")}.png`,
     captureType: "page",
     timestamp: Date.now(),
-    status: "ok",
+    captureStatus: "ok",
+    pageType: "text",
+    ocrStatus: "pending",
   };
 }
 

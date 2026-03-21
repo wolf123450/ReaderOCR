@@ -317,7 +317,7 @@ describe("batch capture state", () => {
     });
     expect(store.capturedPages).toHaveLength(1);
     expect(store.capturedPages[0].captureType).toBe("cover");
-    expect(store.capturedPages[0].status).toBe("ok");
+    expect(store.capturedPages[0].captureStatus).toBe("ok");
 
     store.setNextCaptureType("page");
     store.recordCapture({
@@ -341,7 +341,7 @@ describe("batch capture state", () => {
       errorMessage: "Capture failed",
     });
     expect(store.capturedPages).toHaveLength(1);
-    expect(store.capturedPages[0].status).toBe("error");
+    expect(store.capturedPages[0].captureStatus).toBe("needs_recapture");
     expect(store.capturedPages[0].errorMessage).toBe("Capture failed");
   });
 });
