@@ -342,6 +342,71 @@ async fn ocr_page(
     })
 }
 
+// ---------------------------------------------------------------------------
+// EPUB build command — proxied to the Python sidecar via JSON-RPC
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct EpubMetadataInput {
+    title: String,
+    author: String,
+    #[serde(default = "default_language")]
+    language: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    publisher: String,
+    #[serde(default)]
+    isbn: String,
+    #[serde(default)]
+    cover_image_path: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct EpubBuildResult {
+    output_path: String,
+    file_size_bytes: u64,
+    chapter_count: usize,
+    page_count: usize,
+}
+
+#[tauri::command]
+async fn build_epub(
+    metadata: EpubMetadataInput,
+    chapters: Vec<serde_json::Value>,
+    pages: Vec<serde_json::Value>,
+    output_path: String,
+    edited_blocks: Option<std::collections::HashMap<String, Vec<serde_json::Value>>>,
+    client: tauri::State<'_, Mutex<SidecarClient>>,
+) -> Result<EpubBuildResult, String> {
+    tokio::task::block_in_place(|| {
+        let guard = client.lock().map_err(|e| e.to_string())?;
+        let result: EpubBuildResult = guard.call(
+            "build_epub",
+            serde_json::json!({
+                "metadata": {
+                    "title": metadata.title,
+                    "author": metadata.author,
+                    "language": metadata.language,
+                    "description": metadata.description,
+                    "publisher": metadata.publisher,
+                    "isbn": metadata.isbn,
+                    "cover_image_path": metadata.cover_image_path,
+                },
+                "chapters": chapters,
+                "pages": pages,
+                "output_path": output_path,
+                "edited_blocks": edited_blocks,
+            }),
+        )?;
+        Ok(result)
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -400,7 +465,8 @@ pub fn run() {
       scan_session_dir,
       sidecar_status,
       sidecar_ping,
-      ocr_page
+      ocr_page,
+      build_epub
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

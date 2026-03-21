@@ -19,8 +19,9 @@ from kindleocr.protocol import (
     JsonRpcSuccessResponse,
 )
 from kindleocr.ocr.preprocessing import PreprocessImageParams, preprocess_image
-from kindleocr.ocr.engine import OcrProcessPageParams
+from kindleocr.ocr.engine import BoundingBox, OcrPageResult, OcrProcessPageParams, TextBlock
 from kindleocr.ocr.paddle_ocr import ocr_page_paddle
+from kindleocr.epub.builder import EpubBuildParams, EpubMetadata, build_epub
 
 
 class JsonRpcServer:
@@ -109,6 +110,7 @@ def create_server() -> JsonRpcServer:
     server = JsonRpcServer()
     server.register("preprocess_image", _handle_preprocess_image)
     server.register("ocr_page", _handle_ocr_page)
+    server.register("build_epub", _handle_build_epub)
     return server
 
 
@@ -158,3 +160,104 @@ def _handle_ocr_page(params: Dict[str, Any]) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# build_epub handler
+# ---------------------------------------------------------------------------
+
+def _handle_build_epub(params: Dict[str, Any]) -> Dict[str, Any]:
+    """JSON-RPC handler for 'build_epub'.
+
+    Expected params shape::
+
+        {
+          "metadata": {
+            "title": "...", "author": "...", "language": "en",
+            "description": "", "publisher": "", "isbn": "",
+            "cover_image_path": ""
+          },
+          "chapters": [...],   // ChapterSegment[]
+          "pages": [           // OcrPageResult[]
+            {
+              "page_index": 0,
+              "blocks": [{"type": "body", "text": "...", "confidence": 0.9,
+                          "bbox": {"x": 0, "y": 0, "width": 100, "height": 20},
+                          "col_index": 0}],
+              "raw_text": "...",
+              "avg_confidence": 0.9
+            }, ...
+          ],
+          "output_path": "/path/to/output.epub",
+          "edited_blocks": {   // optional: page_index (str) → block list
+            "0": [...]
+          }
+        }
+    """
+    meta_raw = params["metadata"]
+    metadata = EpubMetadata(
+        title=meta_raw["title"],
+        author=meta_raw["author"],
+        language=meta_raw.get("language", "en"),
+        description=meta_raw.get("description", ""),
+        publisher=meta_raw.get("publisher", ""),
+        isbn=meta_raw.get("isbn", ""),
+        cover_image_path=meta_raw.get("cover_image_path", ""),
+    )
+
+    pages: list[OcrPageResult] = []
+    for p_raw in params.get("pages", []):
+        blocks: list[TextBlock] = []
+        for b_raw in p_raw.get("blocks", []):
+            bbox_raw = b_raw.get("bbox", {})
+            blocks.append(TextBlock(
+                type=b_raw["type"],
+                text=b_raw["text"],
+                confidence=float(b_raw.get("confidence", 1.0)),
+                bbox=BoundingBox(
+                    x=float(bbox_raw.get("x", 0)),
+                    y=float(bbox_raw.get("y", 0)),
+                    width=float(bbox_raw.get("width", 0)),
+                    height=float(bbox_raw.get("height", 0)),
+                ),
+                col_index=int(b_raw.get("col_index", 0)),
+            ))
+        pages.append(OcrPageResult(
+            page_index=int(p_raw["page_index"]),
+            blocks=blocks,
+            raw_text=p_raw.get("raw_text", ""),
+            avg_confidence=float(p_raw.get("avg_confidence", 1.0)),
+        ))
+
+    # edited_blocks: keys are str (JSON) → convert to int
+    edited_blocks: Dict[int, list[TextBlock]] | None = None
+    if "edited_blocks" in params and params["edited_blocks"]:
+        edited_blocks = {}
+        for page_key, block_list in params["edited_blocks"].items():
+            eb: list[TextBlock] = []
+            for b_raw in block_list:
+                bbox_raw = b_raw.get("bbox", {})
+                eb.append(TextBlock(
+                    type=b_raw["type"],
+                    text=b_raw["text"],
+                    confidence=float(b_raw.get("confidence", 1.0)),
+                    bbox=BoundingBox(
+                        x=float(bbox_raw.get("x", 0)),
+                        y=float(bbox_raw.get("y", 0)),
+                        width=float(bbox_raw.get("width", 0)),
+                        height=float(bbox_raw.get("height", 0)),
+                    ),
+                    col_index=int(b_raw.get("col_index", 0)),
+                ))
+            edited_blocks[int(page_key)] = eb
+
+    build_params = EpubBuildParams(
+        metadata=metadata,
+        chapters=params.get("chapters", []),
+        pages=pages,
+        output_path=params["output_path"],
+        edited_blocks=edited_blocks,
+    )
+
+    result = build_epub(build_params)
+    return dataclasses.asdict(result)
