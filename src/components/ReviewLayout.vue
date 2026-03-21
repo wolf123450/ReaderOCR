@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useUiStore, type ReviewSubtab } from "@/stores/ui";
-import { useCaptureStore } from "@/stores/capture";
 import FilmstripSidebar from "@/components/FilmstripSidebar.vue";
 
 const ui = useUiStore();
-const capture = useCaptureStore();
 
 const subtabs: { id: ReviewSubtab; label: string }[] = [
   { id: "pages", label: "Pages" },

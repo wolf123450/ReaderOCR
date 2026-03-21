@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useChaptersStore, type ChapterSegment, type ChapterType } from "@/stores/chapters";
-import { useCaptureStore } from "@/stores/capture";
 
 const props = defineProps<{ chapter: ChapterSegment }>();
 
 const chapters = useChaptersStore();
-const capture = useCaptureStore();
 
 const editing = ref(false);
 const expanded = ref(false);

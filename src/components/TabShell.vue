@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import { useUiStore, type TopTab } from "@/stores/ui";
 import CaptureView from "@/views/CaptureView.vue";
 import ReviewView from "@/views/ReviewView.vue";

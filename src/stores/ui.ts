@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { useCaptureStore } from "@/stores/capture";
 
 export type TopTab = "capture" | "review" | "export";

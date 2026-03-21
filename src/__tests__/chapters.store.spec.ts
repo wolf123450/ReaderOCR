@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
-import { useChaptersStore, type ChapterSegment, type PageFraction } from "@/stores/chapters";
+import { useChaptersStore, type PageFraction } from "@/stores/chapters";
 
 function makeFraction(pageIndex: number, start = 0.0, end = 1.0): PageFraction {
   return { pageIndex, start, end };

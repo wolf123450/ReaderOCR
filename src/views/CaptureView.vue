@@ -9,7 +9,7 @@ import ProgressTracker from "@/components/ProgressTracker.vue";
 import SidecarStatus from "@/components/SidecarStatus.vue";
 import CapturedPagesPanel from "@/components/CapturedPagesPanel.vue";
 import CaptureConfigPanel from "@/components/CaptureConfigPanel.vue";
-import { useCaptureStore, type CaptureProgress, type CaptureType } from "@/stores/capture";
+import { useCaptureStore, type CaptureProgress, type CaptureType, type SessionPageFromDisk } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
 
 const store = useCaptureStore();
@@ -32,6 +32,7 @@ interface SessionData {
   delayBetweenMs: number;
   maxPages: number | null;
   pagesCaptured: number;
+  pages: SessionPageFromDisk[];
   region: { x: number; y: number; width: number; height: number };
   createdAt: string;
   updatedAt: string;
@@ -117,6 +118,22 @@ async function tryLoadSession(dir: string) {
       maxPages.value = session.maxPages;
       // Restore captured page count so resume starts from the right page.
       store.restorePagesCaptured(session.pagesCaptured);
+      // Populate capturedPages so the Review tab becomes available.
+      if (session.pages && session.pages.length > 0) {
+        store.restoreSessionPages(session.pages);
+      } else if (session.pagesCaptured > 0) {
+        // Legacy sessions (before step 42) lack the pages array.
+        // Reconstruct synthetic entries from the count + file prefix.
+        const outputDir = store.effectiveOutputDir;
+        const syntheticPages: SessionPageFromDisk[] = Array.from(
+          { length: session.pagesCaptured },
+          (_, i) => ({
+            pageNumber: i + 1,
+            imagePath: `${outputDir}\\${session.filePrefix}-${String(i + 1).padStart(3, "0")}.png`,
+          })
+        );
+        store.restoreSessionPages(syntheticPages);
+      }
       if (session.pagesCaptured > 0) {
         store.transitionTo("stopped");
         uiStore.setCaptureConfigCollapsed(true);
@@ -231,9 +248,42 @@ function continueCapture() {
       <SidecarStatus />
     </div>
 
+    <!-- Step 1: Project config (always visible) -->
+    <div class="project-config">
+      <label class="config-label">
+        Book / Project name
+        <input
+          :value="store.bookName"
+          @input="store.setBookName(($event.target as HTMLInputElement).value)"
+          type="text"
+          placeholder="My Book Title"
+        />
+      </label>
+      <label class="config-label">
+        Output directory
+        <div class="dir-picker">
+          <input
+            :value="store.batchConfig.outputDir"
+            readonly
+            type="text"
+            placeholder="Choose a folder…"
+            @click="browseOutputDir"
+          />
+          <button class="browse-btn" @click="browseOutputDir" title="Browse…">📁</button>
+        </div>
+      </label>
+      <span v-if="store.effectiveOutputDir" class="effective-path">→ {{ store.effectiveOutputDir }}</span>
+    </div>
+
+    <!-- Session loaded banner -->
+    <div v-if="sessionLoaded" class="session-loaded">
+      <span class="check">↩</span>
+      Session loaded — {{ store.pagesCaptured }} page{{ store.pagesCaptured === 1 ? '' : 's' }} captured previously. Ready to resume.
+    </div>
+
+    <!-- Step 2: Window & region picker -->
     <CaptureConfigPanel @pause-and-expand="handlePauseAndExpand">
       <WindowPicker />
-
       <RegionSelector />
     </CaptureConfigPanel>
 
@@ -243,43 +293,11 @@ function continueCapture() {
       Region selected: {{ store.region.width }}×{{ store.region.height }} px
     </div>
 
-    <!-- Session loaded banner -->
-    <div v-if="sessionLoaded" class="session-loaded">
-      <span class="check">↩</span>
-      Session loaded — {{ store.pagesCaptured }} page{{ store.pagesCaptured === 1 ? '' : 's' }} captured previously. Ready to resume.
-    </div>
-
+    <!-- Step 3: Capture config + controls (requires window+region) -->
     <div v-if="selectionSummary" class="selection-summary">
       <h3>Capture Configuration</h3>
-      <p><strong>Window:</strong> {{ selectionSummary.window }}</p>
-      <p><strong>Region:</strong> {{ selectionSummary.region }}</p>
 
       <div class="config-form">
-        <label>
-          Book / Project name
-          <input
-            :value="store.bookName"
-            @input="store.setBookName(($event.target as HTMLInputElement).value)"
-            type="text"
-            placeholder="My Book Title"
-          />
-        </label>
-        <label>
-          Output directory
-          <div class="dir-picker">
-            <input
-              :value="store.batchConfig.outputDir"
-              readonly
-              type="text"
-              placeholder="Choose a folder…"
-              @click="browseOutputDir"
-            />
-            <button class="browse-btn" @click="browseOutputDir" title="Browse…">📁</button>
-          </div>
-        </label>
-        <label v-if="store.effectiveOutputDir">
-          <span class="effective-path">→ {{ store.effectiveOutputDir }}</span>
-        </label>
         <label>
           Capture type
           <select
@@ -370,6 +388,47 @@ function continueCapture() {
   margin: 0;
 }
 
+/* ── Project config (always visible) ─────────────────────────── */
+.project-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: #1a1a2e;
+  border-radius: 6px;
+}
+
+.config-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #aaa;
+  flex: 1;
+  min-width: 180px;
+}
+
+.config-label input {
+  margin-top: 0.2rem;
+  padding: 0.35rem 0.5rem;
+  background: #16213e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.effective-path {
+  font-size: 0.75rem;
+  color: #666;
+  font-style: italic;
+  align-self: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
 .region-confirmed {
   margin-top: 0.5rem;
   padding: 0.4rem 0.7rem;
@@ -437,6 +496,13 @@ function continueCapture() {
   border-radius: 4px;
 }
 
+.effective-path {
+  font-size: 0.75rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* dir-picker is used inside project-config */
 .dir-picker {
   display: flex;
   gap: 0.3rem;
@@ -447,6 +513,11 @@ function continueCapture() {
   flex: 1;
   margin-top: 0;
   cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  background: #16213e;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 4px;
 }
 
 .browse-btn {
@@ -460,12 +531,6 @@ function continueCapture() {
 
 .browse-btn:hover {
   background: #444;
-}
-
-.effective-path {
-  font-size: 0.75rem;
-  color: #666;
-  font-style: italic;
 }
 
 .controls {
