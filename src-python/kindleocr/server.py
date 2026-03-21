@@ -134,11 +134,21 @@ def _handle_preprocess_image(params: Dict[str, Any]) -> Dict[str, Any]:
     return dataclasses.asdict(result)
 
 
+# Engine values accepted as PaddleOCR (the only implemented engine).
+_PADDLE_ENGINE_ALIASES = frozenset({"ppocr", "ppocr_vl", "paddleocr-pp-ocrv5"})
+
+
 def _handle_ocr_page(params: Dict[str, Any]) -> Dict[str, Any]:
     """JSON-RPC handler for 'ocr_page'."""
+    engine = params.get("engine", "ppocr")
+    if engine not in _PADDLE_ENGINE_ALIASES:
+        raise ValueError(
+            f"Unsupported OCR engine: {engine!r}. "
+            f"Supported engines: {sorted(_PADDLE_ENGINE_ALIASES)}"
+        )
     p = OcrProcessPageParams(
         image_path=params["image_path"],
-        engine=params.get("engine", "ppocr"),
+        engine="ppocr",  # normalise to canonical name; alias already validated
         page_index=params.get("page_index", 0),
     )
     result = ocr_page_paddle(p)
