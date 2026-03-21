@@ -34,7 +34,7 @@ function makeDiskEntry(n: number): DiskPageEntry {
 
 describe("buildReport (pure reconciliation logic)", () => {
   it("1. perfect match → all fields empty except matched", () => {
-    const pages = [1, 2, 3].map(makePage);
+    const pages = [1, 2, 3].map((n) => makePage(n));
     const disk = [1, 2, 3].map(makeDiskEntry);
     const report = buildReport(pages, disk);
     expect(report.missingFromDisk).toHaveLength(0);
@@ -43,7 +43,7 @@ describe("buildReport (pure reconciliation logic)", () => {
   });
 
   it("2. JSON has 5 pages, disk only has 1-3 → missingFromDisk = [4, 5]", () => {
-    const pages = [1, 2, 3, 4, 5].map(makePage);
+    const pages = [1, 2, 3, 4, 5].map((n) => makePage(n));
     const disk = [1, 2, 3].map(makeDiskEntry);
     const report = buildReport(pages, disk);
     expect(report.missingFromDisk.sort()).toEqual([4, 5]);
@@ -51,7 +51,7 @@ describe("buildReport (pure reconciliation logic)", () => {
   });
 
   it("3. JSON has pages 1-3, disk has pages 1-5 → extraOnDisk = [4, 5]", () => {
-    const pages = [1, 2, 3].map(makePage);
+    const pages = [1, 2, 3].map((n) => makePage(n));
     const disk = [1, 2, 3, 4, 5].map(makeDiskEntry);
     const report = buildReport(pages, disk);
     expect(report.extraOnDisk.sort()).toEqual([4, 5]);
@@ -66,7 +66,7 @@ describe("useSessionStore — applyReconcile", () => {
 
   it("4. removeFromSession removes those page numbers", () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3, 4, 5].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3, 4, 5].map((n) => makePage(n)));
 
     const session = useSessionStore();
     session.lastScanResult = { found: [1, 2, 3].map(makeDiskEntry) };
@@ -76,7 +76,7 @@ describe("useSessionStore — applyReconcile", () => {
 
   it("5. adoptFromDisk adds 2 new pages with status ok", () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3].map((n) => makePage(n)));
 
     const session = useSessionStore();
     session.lastScanResult = { found: [1, 2, 3, 4, 5].map(makeDiskEntry) };
@@ -88,7 +88,7 @@ describe("useSessionStore — applyReconcile", () => {
 
   it("6. cancel (clearReconcile) leaves session unchanged", () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3].map((n) => makePage(n)));
 
     const session = useSessionStore();
     session.reconcileReport = { missingFromDisk: [3], extraOnDisk: [], matched: [1, 2] };
@@ -99,7 +99,7 @@ describe("useSessionStore — applyReconcile", () => {
 
   it("applyReconcile — markNeedsRecapture sets captureStatus", () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3].map((n) => makePage(n)));
 
     const session = useSessionStore();
     session.lastScanResult = { found: [1, 2].map(makeDiskEntry) };
@@ -117,7 +117,7 @@ describe("useSessionStore — reconcileWithDisk (mocked invoke)", () => {
 
   it("invokes scan_session_dir and returns reconcile report", async () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3, 4, 5].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3, 4, 5].map((n) => makePage(n)));
     vi.mocked(invoke).mockResolvedValue({ found: [1, 2, 3].map(makeDiskEntry) });
 
     const session = useSessionStore();

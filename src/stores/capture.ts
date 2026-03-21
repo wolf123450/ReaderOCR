@@ -40,6 +40,17 @@ export type CaptureStatus =
 
 export type OcrStatus = "pending" | "running" | "done" | "error" | "skipped";
 
+/** Minimal page data as stored in the session JSON — used to restore capturedPages on session load. */
+export interface SessionPageFromDisk {
+  pageNumber: number;
+  imagePath: string;
+  captureStatus?: string;
+  pageType?: string;
+  ocrStatus?: string;
+  timestamp?: number;
+  errorMessage?: string;
+}
+
 export interface BatchCaptureConfig {
   outputDir: string;
   bookName: string;
@@ -256,6 +267,20 @@ export const useCaptureStore = defineStore("capture", () => {
     pagesCaptured.value = count;
   }
 
+  /** Restore capturedPages array from session JSON (unlocks Review tab). */
+  function restoreSessionPages(pages: SessionPageFromDisk[]): void {
+    capturedPages.value = pages.map((p) => ({
+      pageNumber: p.pageNumber,
+      imagePath: p.imagePath,
+      captureType: "page" as CaptureType,
+      timestamp: p.timestamp ?? Date.now(),
+      captureStatus: (p.captureStatus ?? "ok") as CaptureStatus,
+      pageType: (p.pageType ?? "text") as PageType,
+      ocrStatus: (p.ocrStatus ?? "pending") as OcrStatus,
+      errorMessage: p.errorMessage,
+    }));
+  }
+
   /** Update the page type for a page by index (0-based in capturedPages). */
   function setPageType(index: number, type: PageType): void {
     if (index < 0 || index >= capturedPages.value.length) return;
@@ -325,6 +350,7 @@ export const useCaptureStore = defineStore("capture", () => {
     setBookName,
     setNextCaptureType,
     restorePagesCaptured,
+    restoreSessionPages,
     // Batch capture
     batchState,
     batchConfig,

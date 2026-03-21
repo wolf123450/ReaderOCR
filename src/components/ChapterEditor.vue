@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useChaptersStore, type ChapterSegment } from "@/stores/chapters";
-import { useCaptureStore } from "@/stores/capture";
+import { useChaptersStore } from "@/stores/chapters";
 import ChapterItem from "@/components/ChapterItem.vue";
 
 const chapters = useChaptersStore();
-const capture = useCaptureStore();
 
 const draggingIndex = ref<number | null>(null);
 

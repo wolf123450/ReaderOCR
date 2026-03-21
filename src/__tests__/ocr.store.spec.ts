@@ -3,7 +3,6 @@ import { setActivePinia, createPinia } from "pinia";
 import { useOcrStore } from "@/stores/ocr";
 import { useCaptureStore, type CapturedPage } from "@/stores/capture";
 import { useSettingsStore } from "@/stores/settings";
-import { useUiStore } from "@/stores/ui";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -33,10 +32,6 @@ function mockOcrSuccess(text = "Hello", confidence = 95) {
   }));
 }
 
-function mockOcrError(msg = "sidecar crashed") {
-  vi.mocked(invoke).mockRejectedValue(new Error(msg));
-}
-
 describe("useOcrStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -45,7 +40,7 @@ describe("useOcrStore", () => {
 
   it("1. startBatchOcr — queues all non-skipped pages, sets state=running", async () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3, 4, 5].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3, 4, 5].map((n) => makePage(n)));
 
     mockOcrSuccess();
     const ocr = useOcrStore();
@@ -94,7 +89,7 @@ describe("useOcrStore", () => {
 
   it("4. pauseBatchOcr — sets state=paused", () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3].map((n) => makePage(n)));
     // Hang invoke so the batch doesn't drain
     vi.mocked(invoke).mockReturnValue(new Promise(() => {}));
 
@@ -131,7 +126,7 @@ describe("useOcrStore", () => {
 
   it("6. stopBatchOcr — remaining pages stay pending, state=stopped", async () => {
     const capture = useCaptureStore();
-    capture.capturedPages.push(...[1, 2, 3].map(makePage));
+    capture.capturedPages.push(...[1, 2, 3].map((n) => makePage(n)));
     // Hang invoke permanently
     vi.mocked(invoke).mockReturnValue(new Promise(() => {}));
 
