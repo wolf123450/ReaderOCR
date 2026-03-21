@@ -4,10 +4,12 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCaptureStore, type PageType } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
 import { useChaptersStore } from "@/stores/chapters";
+import { useMetadataStore } from "@/stores/metadata";
 
 const capture = useCaptureStore();
 const ui = useUiStore();
 const chaptersStore = useChaptersStore();
+const metaStore = useMetadataStore();
 
 const PAGE_TYPES: { value: PageType; label: string }[] = [
   { value: "text", label: "Text" },
@@ -34,6 +36,10 @@ function onTypeChange(e: Event) {
   if (selectedIndex.value === null) return;
   const val = (e.target as HTMLSelectElement).value as PageType;
   capture.setPageType(selectedIndex.value, val);
+  // When a page is marked as cover, auto-populate the EPUB cover image path.
+  if (val === "cover" && page.value?.imagePath) {
+    metaStore.setCoverImagePath(page.value.imagePath);
+  }
 }
 
 function markRecapture() {
