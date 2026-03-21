@@ -79,7 +79,9 @@ async fn start_batch_capture(
         created_at: existing.as_ref().map(|s| s.created_at.clone()).unwrap_or_else(|| ts.clone()),
         updated_at: ts.clone(),
         pages: existing.as_ref().map(|s| s.pages.clone()).unwrap_or_default(),
-        chapters: existing.map(|s| s.chapters).unwrap_or_default(),
+        chapters: existing.as_ref().map(|s| s.chapters.clone()).unwrap_or_default(),
+        epub_metadata: existing.as_ref().and_then(|s| s.epub_metadata.clone()),
+        ocr_settings: existing.map(|s| s.ocr_settings).unwrap_or(None),
     };
     let _ = write_session(&config.output_dir, &session);
 
@@ -128,6 +130,8 @@ async fn start_batch_capture(
                     created_at: session.created_at.clone(),
                     pages: session.pages.clone(),
                     chapters: session.chapters.clone(),
+                    epub_metadata: session.epub_metadata.clone(),
+                    ocr_settings: session.ocr_settings.clone(),
                 };
                 let _ = write_session(&config.output_dir, &updated);
             }
@@ -228,6 +232,32 @@ fn save_session(dir: String, data: SessionData) -> Result<(), String> {
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create directory: {e}"))?;
     write_session(&dir, &data)
+}
+
+/// Crop a source image and save it to `output_path`.
+/// `x`, `y`, `w`, `h` are pixel coordinates in the original image.
+#[tauri::command]
+fn crop_cover_image(
+    source_path: String,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    output_path: String,
+) -> Result<String, String> {
+    use image::GenericImageView;
+    let img = image::open(&source_path)
+        .map_err(|e| format!("Failed to open image: {e}"))?;
+    let (img_w, img_h) = img.dimensions();
+    // Clamp crop region to image bounds.
+    let x = x.min(img_w.saturating_sub(1));
+    let y = y.min(img_h.saturating_sub(1));
+    let w = w.min(img_w - x).max(1);
+    let h = h.min(img_h - y).max(1);
+    let cropped = img.crop_imm(x, y, w, h);
+    cropped.save(&output_path)
+        .map_err(|e| format!("Failed to save cropped image: {e}"))?;
+    Ok(output_path)
 }
 
 #[tauri::command]
@@ -462,6 +492,7 @@ pub fn run() {
       stop_batch_capture,
       load_session,
       save_session,
+      crop_cover_image,
       scan_session_dir,
       sidecar_status,
       sidecar_ping,

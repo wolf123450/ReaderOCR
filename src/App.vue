@@ -1,5 +1,17 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from "vue";
 import TabShell from "@/components/TabShell.vue";
+import { startAutoSave } from "@/composables/useSaveSession";
+
+let stopAutoSave: (() => void) | null = null;
+
+onMounted(() => {
+  stopAutoSave = startAutoSave();
+});
+
+onUnmounted(() => {
+  stopAutoSave?.();
+});
 </script>
 
 <template>

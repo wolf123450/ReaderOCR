@@ -13,6 +13,63 @@ pub struct SessionRegion {
     pub height: u32,
 }
 
+/// Bounding box for an OCR block stored in the session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionBoundingBox {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// A single OCR text block stored in the session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionOcrBlock {
+    #[serde(rename = "type")]
+    pub block_type: String,
+    pub text: String,
+    pub confidence: f64,
+    pub bbox: SessionBoundingBox,
+    #[serde(default)]
+    pub col_index: i32,
+}
+
+/// EPUB metadata persisted across sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionEpubMetadata {
+    pub title: String,
+    pub author: String,
+    pub language: String,
+    pub description: String,
+    pub publisher: String,
+    pub isbn: String,
+    pub cover_image_path: String,
+}
+
+/// OCR / capture settings persisted across sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionOcrSettings {
+    pub ocr_engine: String,
+    pub ocr_language: String,
+    pub ocr_max_columns: u32,
+    pub auto_ocr_after_capture: bool,
+}
+
+impl Default for SessionOcrSettings {
+    fn default() -> Self {
+        SessionOcrSettings {
+            ocr_engine: "paddleocr-pp-ocrv5".to_string(),
+            ocr_language: "en".to_string(),
+            ocr_max_columns: 10,
+            auto_ocr_after_capture: false,
+        }
+    }
+}
+
 /// Per-page metadata stored in the session file.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +90,18 @@ pub struct SessionPage {
     pub user_notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    /// Raw OCR text for this page (None = not yet OCR'd).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_raw_text: Option<String>,
+    /// Average confidence 0–100 (None = not yet OCR'd).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_confidence: Option<f64>,
+    /// Structured OCR blocks (None = not yet OCR'd).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_blocks: Option<Vec<SessionOcrBlock>>,
+    /// User-edited blocks overriding the OCR output (None = no edits).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_edited_blocks: Option<Vec<SessionOcrBlock>>,
 }
 
 fn default_capture_status() -> String { "ok".to_string() }
@@ -93,6 +162,12 @@ pub struct SessionData {
     /// Chapter structure; absent in legacy sessions (defaults to empty vec).
     #[serde(default)]
     pub chapters: Vec<SessionChapter>,
+    /// EPUB metadata (title, author, etc.); absent in legacy sessions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epub_metadata: Option<SessionEpubMetadata>,
+    /// OCR and capture settings; absent in legacy sessions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_settings: Option<SessionOcrSettings>,
 }
 
 /// Return the path to the session file inside `dir`.
@@ -203,6 +278,8 @@ mod tests {
             updated_at: "2026-01-01T00:00:00Z".to_string(),
             pages: vec![],
             chapters: vec![],
+            epub_metadata: None,
+            ocr_settings: None,
         }
     }
 
@@ -261,6 +338,10 @@ mod tests {
             ocr_status: "pending".to_string(),
             user_notes: None,
             error_message: None,
+            ocr_raw_text: None,
+            ocr_confidence: None,
+            ocr_blocks: None,
+            ocr_edited_blocks: None,
         }
     }
 

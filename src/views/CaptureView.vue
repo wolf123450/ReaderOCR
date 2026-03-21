@@ -11,9 +11,18 @@ import CapturedPagesPanel from "@/components/CapturedPagesPanel.vue";
 import CaptureConfigPanel from "@/components/CaptureConfigPanel.vue";
 import { useCaptureStore, type CaptureProgress, type CaptureType, type SessionPageFromDisk } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
+import { useOcrStore, type OcrPageResult, type TextBlock } from "@/stores/ocr";
+import { useChaptersStore } from "@/stores/chapters";
+import { useMetadataStore } from "@/stores/metadata";
+import { useSettingsStore } from "@/stores/settings";
+import { saveSession } from "@/composables/useSaveSession";
 
 const store = useCaptureStore();
 const uiStore = useUiStore();
+const ocrStore = useOcrStore();
+const chaptersStore = useChaptersStore();
+const metaStore = useMetadataStore();
+const settingsStore = useSettingsStore();
 
 let collapseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -24,6 +33,38 @@ const pageTurnKey = ref("Right");
 const captureError = ref<string | null>(null);
 const sessionLoaded = ref(false);
 
+interface SessionOcrBlock {
+  type: string;
+  text: string;
+  confidence: number;
+  bbox: { x: number; y: number; width: number; height: number };
+  colIndex: number;
+}
+
+interface SessionPageFull extends SessionPageFromDisk {
+  ocrRawText?: string;
+  ocrConfidence?: number;
+  ocrBlocks?: SessionOcrBlock[];
+  ocrEditedBlocks?: SessionOcrBlock[];
+}
+
+interface SessionEpubMetadata {
+  title: string;
+  author: string;
+  language: string;
+  description: string;
+  publisher: string;
+  isbn: string;
+  coverImagePath: string;
+}
+
+interface SessionOcrSettings {
+  ocrEngine: string;
+  ocrLanguage: string;
+  ocrMaxColumns: number;
+  autoOcrAfterCapture: boolean;
+}
+
 interface SessionData {
   bookName: string;
   outputDir: string;
@@ -32,10 +73,13 @@ interface SessionData {
   delayBetweenMs: number;
   maxPages: number | null;
   pagesCaptured: number;
-  pages: SessionPageFromDisk[];
+  pages: SessionPageFull[];
+  chapters?: unknown[];
   region: { x: number; y: number; width: number; height: number };
   createdAt: string;
   updatedAt: string;
+  epubMetadata?: SessionEpubMetadata;
+  ocrSettings?: SessionOcrSettings;
 }
 
 // Event listeners for real-time progress
@@ -138,6 +182,63 @@ async function tryLoadSession(dir: string) {
         store.transitionTo("stopped");
         uiStore.setCaptureConfigCollapsed(true);
       }
+
+      // ── Restore chapters ────────────────────────────────────────
+      if (session.chapters && Array.isArray(session.chapters) && session.chapters.length > 0) {
+        chaptersStore.deserialize(JSON.stringify(session.chapters));
+      }
+
+      // ── Restore OCR results ─────────────────────────────────────
+      for (const pg of session.pages) {
+        if (pg.ocrRawText !== undefined) {
+          const blocks: TextBlock[] = (pg.ocrBlocks ?? []).map((b: SessionOcrBlock) => ({
+            type: b.type,
+            text: b.text,
+            confidence: b.confidence,
+            bbox: b.bbox,
+            col_index: b.colIndex,
+          }));
+          const result: OcrPageResult = {
+            pageNumber: pg.pageNumber,
+            text: pg.ocrRawText,
+            confidence: pg.ocrConfidence ?? 0,
+            blocks,
+          };
+          ocrStore.pageResults.set(pg.pageNumber, result);
+        }
+        if (pg.ocrEditedBlocks && pg.ocrEditedBlocks.length > 0) {
+          const edited: TextBlock[] = pg.ocrEditedBlocks.map((b: SessionOcrBlock) => ({
+            type: b.type,
+            text: b.text,
+            confidence: b.confidence,
+            bbox: b.bbox,
+            col_index: b.colIndex,
+          }));
+          ocrStore.setEditedBlocks(pg.pageNumber, edited);
+        }
+      }
+
+      // ── Restore EPUB metadata ────────────────────────────────────
+      if (session.epubMetadata) {
+        const m = session.epubMetadata;
+        metaStore.setTitle(m.title);
+        metaStore.setAuthor(m.author);
+        metaStore.setLanguage(m.language);
+        metaStore.setDescription(m.description);
+        metaStore.setPublisher(m.publisher);
+        metaStore.setIsbn(m.isbn);
+        metaStore.setCoverImagePath(m.coverImagePath);
+      }
+
+      // ── Restore OCR settings ─────────────────────────────────────
+      if (session.ocrSettings) {
+        const s = session.ocrSettings;
+        settingsStore.setOcrEngine(s.ocrEngine);
+        settingsStore.setOcrLanguage(s.ocrLanguage);
+        settingsStore.setOcrMaxColumns(s.ocrMaxColumns);
+        settingsStore.setAutoOcr(s.autoOcrAfterCapture);
+      }
+
       sessionLoaded.value = true;
     } else {
       sessionLoaded.value = false;
