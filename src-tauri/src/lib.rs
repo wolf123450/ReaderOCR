@@ -272,12 +272,30 @@ fn scan_session_dir(output_dir: String, file_prefix: String) -> DiskScanResult {
 // OCR command — proxied to the Python sidecar via JSON-RPC
 // ---------------------------------------------------------------------------
 
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct SidecarBoundingBox {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct SidecarTextBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    text: String,
+    confidence: f64,
+    bbox: SidecarBoundingBox,
+    #[serde(default)]
+    col_index: i32,
+}
+
 #[derive(serde::Deserialize)]
 struct SidecarOcrResult {
     #[allow(dead_code)]
     page_index: u32,
-    #[allow(dead_code)]
-    blocks: Vec<serde_json::Value>,
+    blocks: Vec<SidecarTextBlock>,
     raw_text: String,
     avg_confidence: f64,
 }
@@ -287,6 +305,7 @@ struct OcrPageResponse {
     page_number: u32,
     text: String,
     confidence: f64,
+    blocks: Vec<SidecarTextBlock>,
 }
 
 #[tauri::command]
@@ -316,6 +335,7 @@ async fn ocr_page(
             page_number,
             text: result.raw_text,
             confidence: (result.avg_confidence * 100.0).round(),
+            blocks: result.blocks,
         })
     })
 }

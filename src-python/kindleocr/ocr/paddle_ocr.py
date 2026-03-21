@@ -98,7 +98,12 @@ def _sort_reading_order(blocks: List[TextBlock]) -> List[TextBlock]:
                 return col
         return len(boundaries)  # last column
 
-    blocks.sort(key=lambda b: (_column_index(b), b.bbox.y, b.bbox.x))
+    # Annotate each block with its computed column index so callers
+    # (and the frontend debug view) can colour-code by column.
+    for block in blocks:
+        block.col_index = _column_index(block)
+
+    blocks.sort(key=lambda b: (b.col_index, b.bbox.y, b.bbox.x))
     return blocks
 
 

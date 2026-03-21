@@ -7,10 +7,26 @@ import { useSettingsStore } from "@/stores/settings";
 
 export type OcrBatchState = "idle" | "running" | "paused" | "stopped" | "completed";
 
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TextBlock {
+  type: string;
+  text: string;
+  confidence: number;
+  bbox: BoundingBox;
+  col_index: number;
+}
+
 export interface OcrPageResult {
   pageNumber: number;
   text: string;
   confidence: number;
+  blocks?: TextBlock[];
   errorMessage?: string;
 }
 
