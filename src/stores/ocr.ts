@@ -94,6 +94,7 @@ export const useOcrStore = defineStore("ocr", () => {
     try {
       const result: OcrPageResult = await invoke("ocr_page", {
         imagePath: page.imagePath,
+        pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
       });
@@ -134,6 +135,7 @@ export const useOcrStore = defineStore("ocr", () => {
     try {
       const result: OcrPageResult = await invoke("ocr_page", {
         imagePath: page.imagePath,
+        pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
       });
@@ -159,6 +161,7 @@ export const useOcrStore = defineStore("ocr", () => {
     try {
       const result: OcrPageResult = await invoke("ocr_page", {
         imagePath: page.imagePath,
+        pageNumber: page.pageNumber,
         engine: useSettingsStore().ocrEngine,
         language: useSettingsStore().ocrLanguage,
       });
