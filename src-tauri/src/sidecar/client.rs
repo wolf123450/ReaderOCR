@@ -43,6 +43,21 @@ pub struct SidecarClient {
     next_id: AtomicU64,
 }
 
+/// Spawn a background thread that reads lines from the sidecar's stderr and
+/// forwards them to the Tauri log so they appear in the developer console.
+fn forward_stderr(stderr: std::process::ChildStderr) {
+    use std::io::BufRead;
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            match line {
+                Ok(l) => log::debug!("[sidecar] {l}"),
+                Err(_) => break,
+            }
+        }
+    });
+}
+
 impl SidecarClient {
     pub fn new() -> Self {
         Self {
@@ -67,6 +82,8 @@ impl SidecarClient {
         let mut child = child;
         let stdin = child.stdin.take().ok_or("Failed to capture sidecar stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to capture sidecar stdout")?;
+        let stderr = child.stderr.take().ok_or("Failed to capture sidecar stderr")?;
+        forward_stderr(stderr);
 
         *self.process.lock().map_err(|e| e.to_string())? = Some(child);
         *self.stdin.lock().map_err(|e| e.to_string())? = Some(stdin);
