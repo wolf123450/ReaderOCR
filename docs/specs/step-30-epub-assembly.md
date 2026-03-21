@@ -12,11 +12,13 @@ Assemble the final EPUB file from structured text, chapter boundaries, metadata,
 
 ```python
 EpubBuildParams:
-    metadata: EpubMetadata      # title, author, language, etc.
-    chapters: ChapterBoundary[] # chapter titles + start pages
-    pages: PageText[]           # ordered page text content
+    metadata: EpubMetadata           # title, author, language, etc.
+    chapters: ChapterBoundary[]      # chapter titles + start pages
+    pages: PageText[]                # ordered page text content (blocks in edited reading order)
+    figure_regions: dict[int, list[FigureRegion]]  # page_index → figure regions (step 47)
     cover_image_path: str | None
     output_path: str
+    session_output_dir: str          # where to write cropped figure images
 ```
 
 ## Outputs
@@ -45,11 +47,40 @@ EpubBuildResult:
    e. Add chapter to book
 2. For front matter pages (before first chapter): create dedicated "Front Matter" section
 
+### Block type handling
+Blocks come from `editedBlocks` (step 46) and carry a `blockType` field. Each type maps to an HTML output:
+
+| blockType | HTML output |
+|---|---|
+| `body` | `<p>text</p>` |
+| `chapter_title` | `<h1>text</h1>` (also registered as a chapter boundary if not already in the chapter list) |
+| `section_heading` | `<h2>text</h2>` |
+| `sidebar` | `<aside><p>text</p></aside>` |
+| `figure_caption` | Emitted only inside a `<figcaption>` tag; not emitted as standalone `<p>` |
+| `header` | Omitted |
+| `footer` | Omitted |
+| `page_number` | Omitted |
+| `excluded` | Omitted |
+
+Figure regions (step 47) are interleaved in block reading order and emit:
+```html
+<figure>
+  <img src="../images/{figId}.png" alt="{altText}" />
+  <figcaption>{captionText if captionBlockId present}</figcaption>
+</figure>
+```
+
 ### HTML formatting
-1. Paragraphs → `<p>text</p>`
-2. Chapter titles → `<h1>title</h1>` at start of each chapter
+1. Body blocks → `<p>text</p>`
+2. Chapter title blocks → `<h1>text</h1>` at start of each chapter
 3. Page breaks between original pages → `<div class="page-break"></div>` (optional, configurable)
 4. Preserve line breaks within paragraphs only if they appear intentional
+
+### Figure image handling
+1. Before assembling HTML, crop all `FigureRegion` bboxes from their respective page images using Pillow (see step 47)
+2. Write cropped PNGs to `{session_output_dir}/figures/`
+3. Add each cropped image to the EPUB manifest as an image item
+4. Reference via relative `../images/` path in chapter HTML
 
 ### Table of contents
 1. Auto-generate TOC from chapter list
@@ -75,6 +106,9 @@ EpubBuildResult:
 - Unicode content → ensure UTF-8 encoding throughout
 - Output path not writable → raise clear error before attempting write
 - Existing file at output path → overwrite with confirmation (handled by frontend)
+- Page has no `editedBlocks` → fall back to raw `OcrPageResult.blocks` with all `blockType` defaulting to `"body"`
+- Figure region's page image missing at export time → skip figure, emit `<!-- figure unavailable: {label} -->` HTML comment, log warning
+- `chapter_title` block detected mid-chapter (not at chapter boundary) → treat as section heading (`<h2>`) rather than starting a new EPUB chapter, unless it also matches the chapter boundary list
 
 ## Test Criteria
 
@@ -87,3 +121,9 @@ EpubBuildResult:
 6. **TOC generation**: Chapter titles appear in NCX and nav document
 7. **Empty chapter skip**: Chapter with no pages → not included in output
 8. **File size**: Output EPUB file size > 0 bytes
+9. **Excluded blocks omitted**: Block with `blockType: "excluded"` → text not present anywhere in EPUB HTML
+10. **Header/footer omitted**: Blocks with `blockType: "header"` or `"footer"` → not in EPUB body
+11. **section_heading**: Block with `blockType: "section_heading"` → wrapped in `<h2>`, not `<p>`
+12. **Figure embed**: Page with one `FigureRegion` → EPUB contains `<figure><img .../>` in chapter HTML; image file present in EPUB manifest
+13. **Figure caption link**: Figure with `captionBlockId` pointing to a `figure_caption` block → `<figcaption>` text matches that block's text; caption block not emitted as standalone `<p>`
+14. **Missing editedBlocks fallback**: Page without `editedBlocks` entry → all blocks treated as `blockType: "body"`

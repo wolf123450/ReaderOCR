@@ -43,68 +43,117 @@ Build a desktop app that captures book pages from any windowed reader applicatio
 
 ---
 
+## Step Status Legend
+
+- ✅ **Done** — implemented, tested, committed
+- 🔄 **Partial** — core behaviour works; full spec not yet complete
+- ❌ **Not started** — spec exists, no implementation yet
+- 📋 **Spec only** — spec written, implementation not yet begun
+
+> **Critical path** steps are marked **`[CP]`** — these are the minimum sequence required to reach a working end-to-end "capture → OCR → edit → export EPUB" workflow. Non-critical-path steps improve quality or UX but are not blocking.
+
+---
+
 ## Steps
 
 ### Phase 1: Project Scaffolding & Spec Generation
-1. **Git init** — Initialize git repository, create `.gitignore` (Rust, Node, Python, OS artifacts), initial commit
-2. **Tauri + Vue.js init** — `create-tauri-app` with Vue + TypeScript + Vite. Verify `cargo tauri dev` runs a blank window
-3. **Python sidecar init** — Create `src-python/` with `pyproject.toml`, virtual env, pytest configured. Verify `pytest` runs (even with 0 tests)
-4. **JSON-RPC protocol schema** — Define TypeScript + Python types for Tauri ↔ Python messages (request/response). Shared schema file.
-5. **Monorepo dev scripts** — `package.json` scripts for concurrent dev (`tauri dev` + Python sidecar). Document in README.
-6. **Save plan & generate specs** — Commit `docs/plan.md` (this plan) to repo. Generate a spec file (`docs/specs/step-NN-slug.md`) for each step in Phases 2–7. Each spec includes: objective, inputs, outputs, algorithm description (if applicable), edge cases, test criteria, and dependencies on prior steps. **All subsequent implementation follows the spec for that step.**
-7. **Test infrastructure commit** — Create `test-fixtures/` with 2–3 sample page images (public domain book pages). Verify Rust, Python, and Vue test harnesses all pass. Commit.
+1. ✅ **Git init** — Initialize git repository, create `.gitignore` (Rust, Node, Python, OS artifacts), initial commit
+2. ✅ **Tauri + Vue.js init** — `create-tauri-app` with Vue + TypeScript + Vite. Verify `cargo tauri dev` runs a blank window
+3. ✅ **Python sidecar init** — Create `src-python/` with `pyproject.toml`, virtual env, pytest configured. Verify `pytest` runs (even with 0 tests)
+4. ✅ **JSON-RPC protocol schema** — Define TypeScript + Python types for Tauri ↔ Python messages (request/response). Shared schema file.
+5. ✅ **Monorepo dev scripts** — `package.json` scripts for concurrent dev (`tauri dev` + Python sidecar). Document in README.
+6. ✅ **Save plan & generate specs** — Commit `docs/plan.md` (this plan) to repo. Generate a spec file (`docs/specs/step-NN-slug.md`) for each step in Phases 2–7. Each spec includes: objective, inputs, outputs, algorithm description (if applicable), edge cases, test criteria, and dependencies on prior steps. **All subsequent implementation follows the spec for that step.**
+7. ✅ **Test infrastructure commit** — Create `test-fixtures/` with 2–3 sample page images (public domain book pages). Verify Rust, Python, and Vue test harnesses all pass. Commit.
 
 ### Phase 2: Screen Capture Module (Rust + Vue)
-8. **Window enumeration** — Rust command to list open windows with titles and handles (win32 API via `windows` crate). **Tests**: unit test that enumeration returns at least 1 window and filters out invisible/zero-size windows.
-9. **Region selection UI** — Vue overlay component: user selects a window, then draws a rectangle over the content area. Draggable/resizable selection box. **Tests**: Vitest component test for region data model (coordinates, resize logic, bounds clamping).
-10. **Page capture** — Rust command to capture screenshot of selected region (`xcap` crate). Save as PNG. **Tests**: integration test that captures a known region and verifies PNG output (file exists, non-zero size, valid image dimensions).
-11. **Page turn automation** — Configurable key press simulation (default: Right Arrow). Configurable delay. Rust `SendInput`. **Tests**: unit test for key config parsing; manual verification of key delivery.
-12. **Batch capture loop** — Vue controls: Start/Stop/Pause. Configurable delay, page count. Numbered PNGs. Live preview. **Tests**: Vitest store test for batch state machine (idle→capturing→paused→stopped transitions).
-13. **Duplicate detection** — Compare consecutive captures via perceptual image hash (`image_hasher` crate or similar). Auto-stop when same page detected. **Tests**: Rust unit test — hash two identical images → match; hash two different images → no match; hash near-duplicate (minor rendering diff) → configurable threshold.
+8. ✅ **Window enumeration** — Rust command to list open windows with titles and handles (win32 API via `windows` crate). **Tests**: unit test that enumeration returns at least 1 window and filters out invisible/zero-size windows.
+9. ✅ **Region selection UI** — Vue overlay component: user selects a window, then draws a rectangle over the content area. Draggable/resizable selection box. **Tests**: Vitest component test for region data model (coordinates, resize logic, bounds clamping).
+10. ✅ **`[CP]` Page capture** — Rust command to capture screenshot of selected region (`xcap` crate). Save as PNG. **Tests**: integration test that captures a known region and verifies PNG output (file exists, non-zero size, valid image dimensions).
+11. ✅ **Page turn automation** — Configurable key press simulation (default: Right Arrow). Configurable delay. Rust `SendInput`. **Tests**: unit test for key config parsing; manual verification of key delivery.
+12. ✅ **Batch capture loop** — Vue controls: Start/Stop/Pause. Configurable delay, page count. Numbered PNGs. Live preview. **Tests**: Vitest store test for batch state machine (idle→capturing→paused→stopped transitions).
+13. ✅ **Duplicate detection** — Compare consecutive captures via perceptual image hash (`image_hasher` crate or similar). Auto-stop when same page detected. **Tests**: Rust unit test — hash two identical images → match; hash two different images → no match; hash near-duplicate (minor rendering diff) → configurable threshold.
 
 ### Phase 3: OCR Pipeline (Python Sidecar)
-14. **Sidecar setup** — Tauri sidecar configuration to spawn Python process. JSON-RPC over stdin/stdout. **Tests**: integration test — Tauri sends a ping request, Python responds with pong. Python-side test — feed JSON-RPC messages to server, verify responses.
-15. **Image preprocessing** — Auto-crop, deskew, contrast normalization via Pillow. **Tests**: pytest with fixture images — verify cropped output dimensions, verify deskew on a deliberately rotated image, verify contrast-normalized histogram.
-16. **OCR execution** — PaddleOCR PP-OCRv5 for standard pages. PaddleOCR-VL-1.5 for complex pages. **Tests**: pytest with fixture page image → verify extracted text matches expected output with >90% character accuracy (Levenshtein distance check).
-17. **Layout analysis** — PP-StructureV3: identify headers, footers, page numbers, body, tables. **Tests**: fixture image with known header/footer → verify classified correctly. Fixture with body-only → verify no false positives.
-18. **Text extraction** — Extract in reading order, return structured blocks `{ type, text, confidence, bbox }`. **Tests**: multi-column fixture → verify reading order. Single-column fixture → verify sequential output.
+14. ✅ **`[CP]` Sidecar setup** — Tauri sidecar configuration to spawn Python process. JSON-RPC over stdin/stdout. **Tests**: integration test — Tauri sends a ping request, Python responds with pong. Python-side test — feed JSON-RPC messages to server, verify responses.
+15. ✅ **Image preprocessing** — Auto-crop, deskew, contrast normalization via Pillow. **Tests**: pytest with fixture images — verify cropped output dimensions, verify deskew on a deliberately rotated image, verify contrast-normalized histogram.
+16. ✅ **`[CP]` OCR execution** — PaddleOCR PP-OCRv5 for standard pages. Multi-column reading order via k-means + Calinski-Harabász criterion on left-x coordinates; `max_cols` setting honoured. **Tests**: pytest with fixture page image → verify extracted text matches expected output with >90% character accuracy; column detection tests (34 passing).
+17. ❌ **Layout analysis** — Heuristic classification of blocks as `header`, `footer`, `page_number`, `body`, `chapter_title`. Feeds `block_type` field into step 46 block editor as a pre-populated suggestion. **Tests**: fixture image with known header/footer → verify classified correctly. Fixture with body-only → verify no false positives. *(Note: step 46 provides manual override for any misclassified blocks, so this step improves quality but does not block export.)*
+18. 🔄 **`[CP]` Text extraction** — Extract in reading order; return structured blocks `{ text, confidence, bbox, col_index }`. Reading order and bounding boxes are working; `block_type` field (from step 17) not yet populated. **Tests**: multi-column fixture → verify reading order. Single-column fixture → verify sequential output.
 
 ### Phase 4: Text Post-Processing (Python)
-19. **Page number removal** — Regex removal of standalone numbers, "Page N", "- N -" at page boundaries. **Tests**: parameterized pytest — input texts with various page number formats → verify clean output. Edge case: text containing legitimate standalone numbers (e.g., "There were 3 apples") not removed.
-20. **Header/footer filtering** — Detect repeated text at same position across pages. **Tests**: provide 5 pages where 3 share the same header → verify header detected and removed. Pages with no repeats → verify no content lost.
-21. **Paragraph reconstruction** — Merge across page breaks, rejoin hyphens, detect continuations. **Tests**: page ending "The quick brown-" + next page "fox jumped" → "The quick brown-fox jumped" (hyphen rejoin). Page ending without period + next starting lowercase → merged. Page ending with period + next starting uppercase → not merged.
-22. **Chapter detection** — Heuristic: "Chapter N", centered headings, large font blocks, whitespace gaps. **Tests**: fixture data with 3 chapter titles in various formats → all detected. Body text with the word "chapter" mid-sentence → not falsely detected.
-23. **Optional: Ollama post-processing** — HTTP client to local Ollama. Send OCR text for error correction, paragraph refinement, chapter title extraction. **Tests**: mock Ollama HTTP responses → verify correctly parsed. Test graceful fallback when Ollama unavailable.
+19. ❌ **Page number removal** — Regex removal of standalone numbers, "Page N", "- N -" at page boundaries. **Tests**: parameterized pytest — input texts with various page number formats → verify clean output. Edge case: text containing legitimate standalone numbers (e.g., "There were 3 apples") not removed. *(Can be handled manually via block type in step 46 if not implemented.)*
+20. ❌ **Header/footer filtering** — Detect repeated text at same position across pages. **Tests**: provide 5 pages where 3 share the same header → verify header detected and removed. Pages with no repeats → verify no content lost. *(Can be handled manually via block type in step 46 if not implemented.)*
+21. ❌ **`[CP]` Paragraph reconstruction** — Merge across page breaks, rejoin hyphens, detect continuations. **Tests**: page ending "The quick brown-" + next page "fox jumped" → "The quick brown-fox jumped" (hyphen rejoin). Page ending without period + next starting lowercase → merged. Page ending with period + next starting uppercase → not merged.
+22. ❌ **Chapter detection** — Heuristic: "Chapter N", centered headings, large font blocks, whitespace gaps. Feeds detected chapter boundaries into the chapter structure model (step 43). **Tests**: fixture data with 3 chapter titles in various formats → all detected. Body text with the word "chapter" mid-sentence → not falsely detected. *(Step 43 chapter editor allows manual correction, so this is a quality improvement, not a blocker.)*
+23. ❌ **Optional: Ollama post-processing** — HTTP client to local Ollama. Send OCR text for error correction, paragraph refinement, chapter title extraction. **Tests**: mock Ollama HTTP responses → verify correctly parsed. Test graceful fallback when Ollama unavailable.
 
 ### Phase 5: Review & Editing UI (Vue)
-24. **Side-by-side viewer** — Left: source image. Right: editable text (Tiptap editor). Page navigation. **Tests**: Vitest — component renders with mock page data, navigation updates current page index.
-25. **Confidence highlighting** — Low-confidence words highlighted yellow/red. **Tests**: Vitest — provide word list with confidence scores, verify correct CSS classes applied above/below threshold.
-26. **Chapter boundary editor** — Visual markers, add/remove/move chapter breaks, drag-and-drop reorder. **Tests**: Vitest store test — add chapter at page N, remove chapter, move chapter, verify resulting chapter list.
-27. **Batch operations** — Accept all, find/replace, regex support. **Tests**: Vitest — find/replace across mock multi-page data, verify all occurrences replaced. Regex test with capture groups.
-28. **Page management** — Delete, reorder, re-run OCR on single page. **Tests**: Vitest store test — delete page at index, verify page list updated and indices renumbered.
+24. ❌ **`[CP]` Side-by-side viewer** — Left: source image with SVG block overlay (reuses debug view infrastructure). Right: editable block list in reading order, sourced from `editedBlocks` (step 46) with fallback to raw OCR blocks. Blocks of excluded types shown greyed-out, not removed. Click-to-link between text panel and SVG overlay. Page navigation. **Tests**: Vitest — component renders with mock page data, navigation updates current page index, editedBlocks fallback works.
+25. ❌ **Confidence highlighting** — Low-confidence blocks highlighted in text panel and SVG overlay. "Colour by confidence" toggle in block editor switches SVG rect colours from column-palette to tier-palette. **Tests**: Vitest — tier assignment; SVG colour function; confidence badge per table row.
+26. ❌ **Chapter boundary editor** — Superseded by step 43 (ChapterSegment model already implemented). This step now covers the UI for managing chapter segments: visual timeline of pages with draggable chapter-start/end handles; add/remove/rename chapters. **Tests**: Vitest store test — add chapter at page N, remove chapter, move chapter, verify resulting chapter list.
+27. ❌ **Batch operations** — Accept all, find/replace, regex support. **Tests**: Vitest — find/replace across mock multi-page data, verify all occurrences replaced. Regex test with capture groups.
+28. 🔄 **Page management** — Delete, reorder, re-run OCR on single page. Core functionality delivered by step 41 (filmstrip, reorder, recapture markers). Re-run OCR on individual page is in step 44 OCR UI. Remaining gap: delete page from session + renumbering. **Tests**: Vitest store test — delete page at index, verify page list updated and indices renumbered.
+
+### Phase 5 (new): Block-Level Review & Visual Marking
+46. 📋 **`[CP]` Block-level reading order editor** — Evolve debug view into interactive editor: click-to-select blocks in SVG overlay or table; drag-and-drop to reorder; merge/split blocks; `blockType` dropdown (`body`, `chapter_title`, `section_heading`, `header`, `footer`, `page_number`, `figure_caption`, `sidebar`, `excluded`); column assignment override; `editedBlocks` persisted per page in OCR store. Spec: `docs/specs/step-46-block-editor.md`. **Tests**: 7 vitest tests covering reorder, merge, split, type change, reset, OCR re-run clear, column override.
+47. 📋 **Visual element region marking** — Draw figure regions on page image (rubber-band, "Mark figure" mode); label + alt text; interleave with text blocks in reading order; export crops image via Pillow; EPUB embeds `<figure><img/><figcaption/>`. Spec: `docs/specs/step-47-visual-element-marking.md`. **Tests**: 6 vitest + 3 pytest tests.
 
 ### Phase 6: EPUB Generation (Python)
-29. **Metadata form** — Vue form: title, author(s), language, cover, description, ISBN. **Tests**: Vitest — form validation (required fields, ISBN format).
-30. **EPUB assembly** — ebooklib: create book, set metadata, chapters from processed text, TOC, default CSS, cover. **Tests**: pytest — generate EPUB from fixture data, verify: ZIP structure valid, `content.opf` contains correct metadata, chapter XHTML files present, TOC entries match chapters.
-31. **CSS styling** — Default book stylesheet (typography, margins, spacing). Presets. **Tests**: verify CSS file included in generated EPUB.
-32. **EPUB validation** — Structural validation in Python (check required files, valid XHTML). **Tests**: generate a valid EPUB → passes. Generate a deliberately broken EPUB → fails validation.
-33. **Output** — Save to user-selected path. Option to preview in default reader. **Tests**: integration — verify file written to specified path.
+29. ❌ **`[CP]` Metadata form** — Vue form: title, author(s), language, cover, description, ISBN. **Tests**: Vitest — form validation (required fields, ISBN format).
+30. ❌ **`[CP]` EPUB assembly** — ebooklib: create book; set metadata; render `editedBlocks` using `blockType` → HTML mapping (`body`→`<p>`, `chapter_title`→`<h1>`, `section_heading`→`<h2>`, excluded types omitted); embed figure regions as `<figure><img/></figure>`; TOC; default CSS; cover. **Tests**: pytest — 14 tests covering block type rendering, figure embeds, excluded blocks, empty chapter skip, metadata round-trip.
+31. ❌ **CSS styling** — Default book stylesheet (typography, margins, spacing). Presets. **Tests**: verify CSS file included in generated EPUB.
+32. ❌ **EPUB validation** — Structural validation in Python (check required files, valid XHTML). **Tests**: generate a valid EPUB → passes. Generate a deliberately broken EPUB → fails validation.
+33. ❌ **`[CP]` Output** — Save to user-selected path. Option to preview in default reader. **Tests**: integration — verify file written to specified path.
 
-### Phase 8: UI Workflow Redesign (new steps from design review)
-39. **App shell tab layout** — Three top-level tabs: *Capture*, *Pages/Review/OCR/Edit*, *Export*. The middle tab contains subtabs (Pages | OCR | Edit Text). Sidebar filmstrip in middle tab. **Tests**: Vitest — tab navigation state machine; active tab persists correctly; subtab state independent of top-level tab.
-40. **Session disk reconciliation** — On session load, scan output directory for `{prefix}-*.png` files and reconcile with session JSON. Detect gaps (missing PNGs), extra files (captured but not in JSON), and mismatches in page count. Present a "reconcile" dialog so the user can resolve conflicts (keep disk, keep JSON, or merge). **Tests**: Vitest store — simulate disk/JSON mismatch scenarios; verify gap detection, merge logic, and reconcile dialog state.
-41. **Enhanced page management** — Filmstrip sidebar (thumbnail per page), drag-and-drop reorder with live renumbering. Allow marking pages as "needs recapture" or "insert before/after". Both recapture and insert workflows feed back into the Capture tab. **Tests**: Vitest — reorder N pages, verify indices renumbered; insert marker at position 3, verify list length and indices; mark page as recapture, verify status.
-42. **Per-page metadata model** — Extend `CapturedPage` with `pageType` enum: `text | cover | illustration | excluded | toc | license | blank | chapter_start`. Store in session JSON (extend `session.rs` and Python-side session model). UI: type selector shown in filmstrip and in detail pane. **Tests**: Vitest store — set type on page, verify round-trip through JSON serialisation; Rust — verify session JSON schema accepts new fields.
-43. **Chapter structure model & editor** — Replace simple "chapter boundary at page N" model with a flexible `ChapterSegment` that maps a range of *source pages* (or partial page, expressed as a top/bottom fraction) to a chapter. Support: many pages → one chapter, one page → one chapter, one page → multiple chapters (split fraction), one capture → entire book. UI: visual timeline of pages with draggable chapter-start and chapter-end handles. **Tests**: Vitest store — create overlapping segment, verify validation error; split single page between two chapters, verify fractions sum to 1.0; serialise/deserialise complex mapping.
-44. **OCR workflow UI** — In the OCR subtab: "Auto-OCR after capture" checkbox (persisted in settings). "Test OCR on this page" button to run single-page OCR and show result before committing to batch. "Run OCR on all pages" button with real-time progress bar per page. Re-run OCR on individual pages from the filmstrip context menu. **Tests**: Vitest store — toggle auto-ocr setting; dispatch single-page OCR, verify only one page result updated; dispatch batch OCR, verify all pages processed in order.
-45. **Capture tab collapse** — The window picker and region selector in the Capture tab collapse into a compact summary bar ("Capturing from: Kindle — 800×600 region") once capture starts. User can click to expand and change settings (pauses capture if running). **Tests**: Vitest — verify collapsed state after first successful capture; verify expand/collapse toggle; verify re-expansion does not lose selected window/region.
+### Phase 8: UI Workflow Redesign (implemented ahead of Phases 4–6)
+39. ✅ **App shell tab layout** — Three top-level tabs: *Capture*, *Pages/Review/OCR/Edit*, *Export*. The middle tab contains subtabs (Pages | OCR | Edit Text). Sidebar filmstrip in middle tab. **Tests**: Vitest — tab navigation state machine; active tab persists correctly; subtab state independent of top-level tab.
+40. ✅ **Session disk reconciliation** — On session load, scan output directory for `{prefix}-*.png` files and reconcile with session JSON. Detect gaps (missing PNGs), extra files (captured but not in JSON), and mismatches in page count. Present a "reconcile" dialog so the user can resolve conflicts (keep disk, keep JSON, or merge). **Tests**: Vitest store — simulate disk/JSON mismatch scenarios; verify gap detection, merge logic, and reconcile dialog state.
+41. ✅ **Enhanced page management** — Filmstrip sidebar (thumbnail per page), drag-and-drop reorder with live renumbering. Allow marking pages as "needs recapture" or "insert before/after". Both recapture and insert workflows feed back into the Capture tab. **Tests**: Vitest — reorder N pages, verify indices renumbered; insert marker at position 3, verify list length and indices; mark page as recapture, verify status.
+42. ✅ **Per-page metadata model** — Extend `CapturedPage` with `pageType` enum: `text | cover | illustration | excluded | toc | license | blank | chapter_start`. Store in session JSON (extend `session.rs` and Python-side session model). UI: type selector shown in filmstrip and in detail pane. **Tests**: Vitest store — set type on page, verify round-trip through JSON serialisation; Rust — verify session JSON schema accepts new fields.
+43. ✅ **Chapter structure model & editor** — Replace simple "chapter boundary at page N" model with a flexible `ChapterSegment` that maps a range of *source pages* (or partial page, expressed as a top/bottom fraction) to a chapter. Support: many pages → one chapter, one page → one chapter, one page → multiple chapters (split fraction), one capture → entire book. UI: visual timeline of pages with draggable chapter-start and chapter-end handles. **Tests**: Vitest store — create overlapping segment, verify validation error; split single page between two chapters, verify fractions sum to 1.0; serialise/deserialise complex mapping.
+44. ✅ **OCR workflow UI** — In the OCR subtab: "Auto-OCR after capture" checkbox (persisted in settings). "Test OCR on this page" button to run single-page OCR and show result before committing to batch. "Run OCR on all pages" button with real-time progress bar per page. Re-run OCR on individual pages from the filmstrip context menu. **Tests**: Vitest store — toggle auto-ocr setting; dispatch single-page OCR, verify only one page result updated; dispatch batch OCR, verify all pages processed in order.
+45. ✅ **Capture tab collapse** — The window picker and region selector in the Capture tab collapse into a compact summary bar ("Capturing from: Kindle — 800×600 region") once capture starts. User can click to expand and change settings (pauses capture if running). **Tests**: Vitest — verify collapsed state after first successful capture; verify expand/collapse toggle; verify re-expansion does not lose selected window/region.
 
 ### Phase 7: Distribution & Polish
-34. **PyInstaller bundling** — Bundle Python sidecar as standalone exe with PaddleOCR models. **Tests**: run bundled exe, send JSON-RPC ping → verify pong response.
-35. **Tauri installer** — MSI/NSIS for Windows, include sidecar binary. **Tests**: install on clean VM/sandbox, verify app launches and sidecar communicates.
-36. **Error handling** — Graceful: OCR unavailable, window closed during capture, Ollama offline, invalid images. **Tests**: Python — send invalid image path → verify error response (not crash). Rust — attempt capture on closed window → verify error returned to UI.
-37. **Logging** — Structured logging (Rust `tracing`, Python `structlog`). Log file accessible from UI. **Tests**: trigger logged events → verify log file contains expected entries.
-38. **Settings persistence** — Save/load preferences: capture delay, OCR engine, Ollama endpoint, output dir. **Tests**: Vitest — save settings, reload, verify round-trip. Rust — verify settings file written as valid JSON.
+34. ❌ **PyInstaller bundling** — Bundle Python sidecar as standalone exe with PaddleOCR models. **Tests**: run bundled exe, send JSON-RPC ping → verify pong response.
+35. ❌ **Tauri installer** — MSI/NSIS for Windows, include sidecar binary. **Tests**: install on clean VM/sandbox, verify app launches and sidecar communicates.
+36. ❌ **Error handling** — Graceful: OCR unavailable, window closed during capture, Ollama offline, invalid images. **Tests**: Python — send invalid image path → verify error response (not crash). Rust — attempt capture on closed window → verify error returned to UI.
+37. ❌ **Logging** — Structured logging (Rust `tracing`, Python `structlog`). Log file accessible from UI. **Tests**: trigger logged events → verify log file contains expected entries.
+38. 🔄 **Settings persistence** — Save/load preferences: capture delay, OCR engine, Ollama endpoint, output dir. OCR settings (`ocrMaxColumns`) already persisted via Pinia store in step 44. Remaining: persist to disk on app exit, reload on startup; extend to all settings. **Tests**: Vitest — save settings, reload, verify round-trip. Rust — verify settings file written as valid JSON.
+
+---
+
+## Critical Path Summary
+
+The minimum sequence to go from a fresh capture session to a valid exported EPUB:
+
+```
+Step 10  Page capture             ✅ done
+Step 14  Sidecar setup            ✅ done
+Step 16  OCR execution            ✅ done
+Step 18  Text extraction          🔄 partial (block_type missing)
+    ↓
+Step 46  Block editor             📋 spec ready — next to implement
+    ↓
+Step 21  Paragraph reconstruction ❌ not started
+    ↓
+Step 43  Chapter structure        ✅ done
+    ↓
+Step 29  Metadata form            ❌ not started
+Step 30  EPUB assembly            ❌ not started
+Step 33  Export output            ❌ not started
+```
+
+Steps **not** on the critical path (improve quality/UX but don't block the first working export):
+- Step 17 Layout analysis (manual override via step 46 covers this)
+- Steps 19–20 Page number / header filtering (manual via block type in step 46)
+- Step 22 Chapter detection (manual via step 43 editor)
+- Step 23 Ollama post-processing (optional)
+- Steps 24–25 Side-by-side viewer + confidence highlighting (review aids, not required to export)
+- Steps 27–28 Batch operations + remaining page management
+- Step 31–32 CSS / EPUB validation (polish)
+- Step 47 Visual element marking (adds figure preservation; not needed for text-only export)
+- Steps 34–37 Distribution & logging (needed for release, not for dev workflow)
 
 ---
 
