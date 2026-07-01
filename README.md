@@ -1,4 +1,4 @@
-# KindleOCR
+# ReaderOCR
 
 Book image to EPUB converter. Captures book pages from any windowed e-reader, runs OCR to extract text, and assembles the result into a well-structured EPUB.
 
